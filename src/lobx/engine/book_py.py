@@ -28,13 +28,16 @@ class PythonOrderBook:
     def submit(self, order: Order) -> list[Fill]:
         """Apply ``order`` and return the fills it produced, in execution order.
 
-        Work in progress: for now limit orders are only inserted. Matching is added next.
+        A limit order first trades against any resting orders it crosses; whatever is left rests
+        in the book at its limit price. Market orders are added in a later commit.
         """
         if order.type is not OrderType.LIMIT or order.price is None:
-            raise NotImplementedError("market orders are added with matching")
-        self._rest(order, order.price, order.qty)
+            raise NotImplementedError("market orders are added in a later commit")
+        fills, remaining = self._match(order, order.price)
+        if remaining > 0:
+            self._rest(order, order.price, remaining)
         self._last_ts = order.ts
-        return []
+        return fills
 
     def best_bid(self) -> int | None:
         """Return the highest resting buy price, or ``None`` if there are no bids."""
@@ -59,6 +62,47 @@ class PythonOrderBook:
         """Turn the best ``depth`` levels of ``side`` into ``(price, total_qty)`` pairs."""
         best_levels = islice(side.levels_best_first(), depth)
         return tuple((level.price, level.total_qty) for level in best_levels)
+
+    def _match(self, order: Order, limit_price: int | None) -> tuple[list[Fill], int]:
+        """Trade ``order`` against the opposite side and return ``(fills, unfilled_qty)``.
+
+        Walks the opposite side from its best price outwards. At each price the earliest resting
+        order trades first (price-time priority), and every trade executes at the *resting*
+        order's price. ``limit_price`` of ``None`` means "no price limit".
+        """
+        opposite = self._asks if order.side is Side.BUY else self._bids
+        fills: list[Fill] = []
+        remaining = order.qty
+        while remaining > 0:
+            level = opposite.best_level()
+            if level is None or not self._crosses(order.side, limit_price, level.price):
+                break
+            traded = min(remaining, level.front().qty)
+            maker = level.fill_front(traded)
+            fills.append(
+                Fill(
+                    maker_order_id=maker.order_id,
+                    taker_order_id=order.order_id,
+                    taker_side=order.side,
+                    price=level.price,
+                    qty=traded,
+                    ts=order.ts,
+                )
+            )
+            remaining -= traded
+            if maker.qty == 0:
+                del self._orders[maker.order_id]
+                opposite.remove_if_empty(level.price)
+        return fills, remaining
+
+    @staticmethod
+    def _crosses(taker_side: Side, limit_price: int | None, level_price: int) -> bool:
+        """Return ``True`` if an incoming order is willing to trade at ``level_price``."""
+        if limit_price is None:
+            return True
+        if taker_side is Side.BUY:
+            return level_price <= limit_price  # a buyer accepts any ask at or below its limit
+        return level_price >= limit_price  # a seller accepts any bid at or above its limit
 
     def _side_for(self, side: Side) -> BookSide:
         """Return the book side an order of ``side`` rests on (buys rest as bids)."""
