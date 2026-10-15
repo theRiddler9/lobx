@@ -7,9 +7,11 @@ against. The rules it follows are written down in ``docs/contracts/shared-contra
 
 from __future__ import annotations
 
+from itertools import islice
+
 from lobx.engine.book_side import BookSide
 from lobx.engine.price_level import RestingOrder
-from lobx.types import Fill, Order, OrderType, Side
+from lobx.types import BookSnapshot, Fill, Order, OrderType, Side
 
 
 class PythonOrderBook:
@@ -33,6 +35,30 @@ class PythonOrderBook:
         self._rest(order, order.price, order.qty)
         self._last_ts = order.ts
         return []
+
+    def best_bid(self) -> int | None:
+        """Return the highest resting buy price, or ``None`` if there are no bids."""
+        return self._bids.best_price()
+
+    def best_ask(self) -> int | None:
+        """Return the lowest resting sell price, or ``None`` if there are no asks."""
+        return self._asks.best_price()
+
+    def snapshot(self, depth: int) -> BookSnapshot:
+        """Return up to ``depth`` aggregated price levels per side, best level first."""
+        if depth <= 0:
+            raise ValueError(f"depth must be greater than 0, got {depth}")
+        return BookSnapshot(
+            ts=self._last_ts,
+            bids=self._levels_to_tuples(self._bids, depth),
+            asks=self._levels_to_tuples(self._asks, depth),
+        )
+
+    @staticmethod
+    def _levels_to_tuples(side: BookSide, depth: int) -> tuple[tuple[int, int], ...]:
+        """Turn the best ``depth`` levels of ``side`` into ``(price, total_qty)`` pairs."""
+        best_levels = islice(side.levels_best_first(), depth)
+        return tuple((level.price, level.total_qty) for level in best_levels)
 
     def _side_for(self, side: Side) -> BookSide:
         """Return the book side an order of ``side`` rests on (buys rest as bids)."""
