@@ -1,0 +1,8 @@
+README.md
+pyproject.toml
+src/lobx/__init__.py
+src/lobx.egg-info/PKG-INFO
+src/lobx.egg-info/SOURCES.txt
+src/lobx.egg-info/dependency_links.txt
+src/lobx.egg-info/top_level.txt
+tests/test_version.py
