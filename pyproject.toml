@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lobx"
+version = "0.1.0"
+description = "Limit-order-book exchange simulator with an ML-driven trade execution agent."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "hypothesis==6.169.4",
+    "ruff==0.17.1",
+    "mypy==2.4.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# E/F: pycodestyle and pyflakes, I: import sorting, B: bugbear, UP: pyupgrade,
+# SIM: simplifications, N: naming, D: docstrings on public items (see AGENTS.md).
+select = ["E", "F", "I", "B", "UP", "SIM", "N", "D"]
+ignore = ["D203", "D213"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
