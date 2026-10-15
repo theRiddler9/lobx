@@ -24,7 +24,7 @@ The stage order is fixed. See `docs/contracts/shared-contracts.md` for the types
 Tick a box in the same commit that finishes the phase work. A phase is done only when its exit
 criteria hold, its `docs/learn/phase-N.md` exists, and the tag is created.
 
-- [ ] Phase 0: scaffold, docs, contracts (tag `phase-0-scaffold`)
+- [x] Phase 0: scaffold, docs, contracts (tag `phase-0-scaffold`)
 - [ ] Phase 1: Python reference engine (tag `phase-1-engine`)
 - [ ] Phase 2: event log, replay, simulator (tag `phase-2-sim`)
 - [ ] Phase 3: C++ engine and differential testing (tag `phase-3-cpp`)
