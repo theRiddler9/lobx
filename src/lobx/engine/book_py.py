@@ -44,6 +44,24 @@ class PythonOrderBook:
         self._last_ts = order.ts
         return fills
 
+    def cancel(self, order_id: int, ts: int) -> bool:
+        """Remove a resting order. Return ``True`` if it was resting, ``False`` otherwise.
+
+        Unknown, already filled, and already cancelled orders all return ``False``; a cancel
+        racing with a fill is normal in a market, so it is not an error.
+        """
+        self._last_ts = ts
+        resting = self._orders.pop(order_id, None)
+        if resting is None:
+            return False
+        side = self._side_for(resting.side)
+        level = side.get(resting.price)
+        if level is None or level.remove(order_id) is None:
+            # Cannot happen unless the id index and the price levels have drifted apart.
+            raise RuntimeError(f"order {order_id} is indexed but missing from its price level")
+        side.remove_if_empty(resting.price)
+        return True
+
     def best_bid(self) -> int | None:
         """Return the highest resting buy price, or ``None`` if there are no bids."""
         return self._bids.best_price()
