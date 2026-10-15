@@ -11,6 +11,7 @@ from itertools import islice
 
 from lobx.engine.book_side import BookSide
 from lobx.engine.price_level import RestingOrder
+from lobx.errors import InvalidOrderError
 from lobx.types import BookSnapshot, Fill, Order, OrderType, Side
 
 
@@ -29,13 +30,17 @@ class PythonOrderBook:
         """Apply ``order`` and return the fills it produced, in execution order.
 
         A limit order first trades against any resting orders it crosses; whatever is left rests
-        in the book at its limit price. Market orders are added in a later commit.
+        in the book at its limit price. A market order trades against whatever is available and
+        its unfilled remainder is discarded: market orders never rest.
         """
-        if order.type is not OrderType.LIMIT or order.price is None:
-            raise NotImplementedError("market orders are added in a later commit")
-        fills, remaining = self._match(order, order.price)
-        if remaining > 0:
-            self._rest(order, order.price, remaining)
+        if order.type is OrderType.MARKET:
+            fills, _discarded = self._match(order, None)
+        else:
+            if order.price is None:
+                raise InvalidOrderError("a limit order needs a price")
+            fills, remaining = self._match(order, order.price)
+            if remaining > 0:
+                self._rest(order, order.price, remaining)
         self._last_ts = order.ts
         return fills
 
