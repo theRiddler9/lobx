@@ -173,7 +173,7 @@ class Order:
     price: int | None; qty: int; ts: int
 @dataclass(frozen=True)
 class Fill:
-    maker_order_id: int; taker_order_id: int
+    maker_order_id: int; taker_order_id: int; taker_side: Side
     price: int; qty: int; ts: int
 @dataclass(frozen=True)
 class BookSnapshot:
