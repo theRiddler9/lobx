@@ -1,0 +1,101 @@
+{
+  "description": "Hand-computed order scenarios. Each step lists the exact fills (or cancel result) the engine must return. Fills are [maker_order_id, taker_order_id, taker_side, price, qty]; the fill ts is the ts of the step. The C++ engine in phase 3 must pass the same file.",
+  "scenarios": [
+    {
+      "name": "time_priority_at_same_price",
+      "why": "Two asks at 101: the earlier order must trade first.",
+      "steps": [
+        {"op": "limit", "id": 1, "agent": 1, "side": "sell", "price": 101, "qty": 3, "ts": 0, "fills": []},
+        {"op": "limit", "id": 2, "agent": 2, "side": "sell", "price": 101, "qty": 4, "ts": 1, "fills": []},
+        {"op": "market", "id": 3, "agent": 3, "side": "buy", "qty": 5, "ts": 2,
+         "fills": [[1, 3, "buy", 101, 3], [2, 3, "buy", 101, 2]]}
+      ],
+      "final": {"depth": 5, "ts": 2, "best_bid": null, "best_ask": 101, "bids": [], "asks": [[101, 2]]}
+    },
+    {
+      "name": "trade_at_resting_price",
+      "why": "A buy limit at 105 against an ask at 100 trades at 100, the resting price.",
+      "steps": [
+        {"op": "limit", "id": 1, "agent": 1, "side": "sell", "price": 100, "qty": 5, "ts": 0, "fills": []},
+        {"op": "limit", "id": 2, "agent": 2, "side": "buy", "price": 105, "qty": 5, "ts": 1,
+         "fills": [[1, 2, "buy", 100, 5]]}
+      ],
+      "final": {"depth": 5, "ts": 1, "best_bid": null, "best_ask": null, "bids": [], "asks": []}
+    },
+    {
+      "name": "walk_the_book_and_rest_remainder",
+      "why": "A buy at 102 sweeps asks at 101 and 102, ignores 103, and rests the leftover 3 as a bid.",
+      "steps": [
+        {"op": "limit", "id": 1, "agent": 1, "side": "sell", "price": 101, "qty": 2, "ts": 0, "fills": []},
+        {"op": "limit", "id": 2, "agent": 1, "side": "sell", "price": 102, "qty": 2, "ts": 1, "fills": []},
+        {"op": "limit", "id": 3, "agent": 1, "side": "sell", "price": 103, "qty": 5, "ts": 2, "fills": []},
+        {"op": "limit", "id": 4, "agent": 2, "side": "buy", "price": 102, "qty": 7, "ts": 3,
+         "fills": [[1, 4, "buy", 101, 2], [2, 4, "buy", 102, 2]]}
+      ],
+      "final": {"depth": 5, "ts": 3, "best_bid": 102, "best_ask": 103, "bids": [[102, 3]], "asks": [[103, 5]]}
+    },
+    {
+      "name": "partial_fill_keeps_maker_at_front",
+      "why": "A partly filled resting order keeps its place in the queue ahead of later orders.",
+      "steps": [
+        {"op": "limit", "id": 1, "agent": 1, "side": "buy", "price": 100, "qty": 10, "ts": 0, "fills": []},
+        {"op": "limit", "id": 2, "agent": 2, "side": "buy", "price": 100, "qty": 5, "ts": 1, "fills": []},
+        {"op": "market", "id": 3, "agent": 3, "side": "sell", "qty": 4, "ts": 2,
+         "fills": [[1, 3, "sell", 100, 4]]},
+        {"op": "market", "id": 4, "agent": 3, "side": "sell", "qty": 7, "ts": 3,
+         "fills": [[1, 4, "sell", 100, 6], [2, 4, "sell", 100, 1]]}
+      ],
+      "final": {"depth": 5, "ts": 3, "best_bid": 100, "best_ask": null, "bids": [[100, 4]], "asks": []}
+    },
+    {
+      "name": "market_remainder_is_discarded",
+      "why": "A market order never rests: its unfilled part vanishes, and on an empty book it does nothing.",
+      "steps": [
+        {"op": "limit", "id": 1, "agent": 1, "side": "sell", "price": 100, "qty": 3, "ts": 0, "fills": []},
+        {"op": "market", "id": 2, "agent": 2, "side": "buy", "qty": 10, "ts": 1,
+         "fills": [[1, 2, "buy", 100, 3]]},
+        {"op": "market", "id": 3, "agent": 2, "side": "buy", "qty": 5, "ts": 2, "fills": []}
+      ],
+      "final": {"depth": 5, "ts": 2, "best_bid": null, "best_ask": null, "bids": [], "asks": []}
+    },
+    {
+      "name": "cancel_then_match",
+      "why": "A cancelled order is skipped; cancelling a filled or already cancelled order returns false.",
+      "steps": [
+        {"op": "limit", "id": 1, "agent": 1, "side": "buy", "price": 100, "qty": 5, "ts": 0, "fills": []},
+        {"op": "limit", "id": 2, "agent": 2, "side": "buy", "price": 100, "qty": 5, "ts": 1, "fills": []},
+        {"op": "cancel", "id": 1, "ts": 2, "result": true},
+        {"op": "market", "id": 3, "agent": 3, "side": "sell", "qty": 5, "ts": 3,
+         "fills": [[2, 3, "sell", 100, 5]]},
+        {"op": "cancel", "id": 1, "ts": 4, "result": false},
+        {"op": "cancel", "id": 2, "ts": 5, "result": false}
+      ],
+      "final": {"depth": 5, "ts": 5, "best_bid": null, "best_ask": null, "bids": [], "asks": []}
+    },
+    {
+      "name": "self_trade_is_allowed",
+      "why": "The engine does not look at agent_id: the same agent can trade with itself.",
+      "steps": [
+        {"op": "limit", "id": 1, "agent": 7, "side": "sell", "price": 100, "qty": 2, "ts": 0, "fills": []},
+        {"op": "limit", "id": 2, "agent": 7, "side": "buy", "price": 100, "qty": 2, "ts": 1,
+         "fills": [[1, 2, "buy", 100, 2]]}
+      ],
+      "final": {"depth": 5, "ts": 1, "best_bid": null, "best_ask": null, "bids": [], "asks": []}
+    },
+    {
+      "name": "snapshot_depth_and_aggregation",
+      "why": "Levels sort best first, quantities at one price add up, and depth cuts the list.",
+      "steps": [
+        {"op": "limit", "id": 1, "agent": 1, "side": "buy", "price": 99, "qty": 2, "ts": 0, "fills": []},
+        {"op": "limit", "id": 2, "agent": 1, "side": "buy", "price": 100, "qty": 3, "ts": 1, "fills": []},
+        {"op": "limit", "id": 3, "agent": 1, "side": "buy", "price": 98, "qty": 1, "ts": 2, "fills": []},
+        {"op": "limit", "id": 4, "agent": 1, "side": "buy", "price": 100, "qty": 4, "ts": 3, "fills": []},
+        {"op": "limit", "id": 5, "agent": 1, "side": "sell", "price": 102, "qty": 5, "ts": 4, "fills": []},
+        {"op": "limit", "id": 6, "agent": 1, "side": "sell", "price": 101, "qty": 6, "ts": 5, "fills": []},
+        {"op": "limit", "id": 7, "agent": 1, "side": "sell", "price": 103, "qty": 1, "ts": 6, "fills": []}
+      ],
+      "final": {"depth": 2, "ts": 6, "best_bid": 100, "best_ask": 101,
+                "bids": [[100, 7], [99, 2]], "asks": [[101, 6], [102, 5]]}
+    }
+  ]
+}
