@@ -17,9 +17,14 @@ _FIXTURE = Path(__file__).parent / "fixtures" / "book_scenarios.json"
 _SCENARIOS: list[dict[str, Any]] = json.loads(_FIXTURE.read_text())["scenarios"]
 
 
+def _side(name: str) -> Side:
+    # The fixture writes sides in lowercase ("buy"); the enum members are BUY and SELL.
+    return Side[name.upper()]
+
+
 def _expected_fills(step: dict[str, Any]) -> list[Fill]:
     return [
-        Fill(maker, taker, Side(taker_side), price, qty, step["ts"])
+        Fill(maker, taker, _side(taker_side), price, qty, step["ts"])
         for maker, taker, taker_side, price, qty in step["fills"]
     ]
 
@@ -29,7 +34,7 @@ def _order_from(step: dict[str, Any]) -> Order:
     return Order(
         order_id=step["id"],
         agent_id=step["agent"],
-        side=Side(step["side"]),
+        side=_side(step["side"]),
         type=order_type,
         price=step.get("price"),
         qty=step["qty"],
