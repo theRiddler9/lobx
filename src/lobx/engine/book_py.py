@@ -11,8 +11,13 @@ from itertools import islice
 
 from lobx.engine.book_side import BookSide
 from lobx.engine.price_level import RestingOrder
-from lobx.errors import InvalidOrderError
+from lobx.errors import DuplicateOrderIdError, InvalidOrderError
 from lobx.types import BookSnapshot, Fill, Order, OrderType, Side
+
+
+def _is_int(value: object) -> bool:
+    """Return ``True`` for real integers. ``bool`` is excluded even though it subclasses ``int``."""
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 class PythonOrderBook:
@@ -32,15 +37,15 @@ class PythonOrderBook:
         A limit order first trades against any resting orders it crosses; whatever is left rests
         in the book at its limit price. A market order trades against whatever is available and
         its unfilled remainder is discarded: market orders never rest.
+
+        Raises ``InvalidOrderError`` or ``DuplicateOrderIdError`` before touching the book if the
+        order breaks a validation rule.
         """
-        if order.type is OrderType.MARKET:
-            fills, _discarded = self._match(order, None)
-        else:
-            if order.price is None:
-                raise InvalidOrderError("a limit order needs a price")
-            fills, remaining = self._match(order, order.price)
-            if remaining > 0:
-                self._rest(order, order.price, remaining)
+        limit_price = self._validate(order)
+        fills, remaining = self._match(order, limit_price)
+        # Only an order with a price can rest. A market order has none, so its remainder vanishes.
+        if remaining > 0 and limit_price is not None:
+            self._rest(order, limit_price, remaining)
         self._last_ts = order.ts
         return fills
 
@@ -50,6 +55,7 @@ class PythonOrderBook:
         Unknown, already filled, and already cancelled orders all return ``False``; a cancel
         racing with a fill is normal in a market, so it is not an error.
         """
+        self._check_ts(ts)
         self._last_ts = ts
         resting = self._orders.pop(order_id, None)
         if resting is None:
@@ -85,6 +91,35 @@ class PythonOrderBook:
         """Turn the best ``depth`` levels of ``side`` into ``(price, total_qty)`` pairs."""
         best_levels = islice(side.levels_best_first(), depth)
         return tuple((level.price, level.total_qty) for level in best_levels)
+
+    def _validate(self, order: Order) -> int | None:
+        """Check every validation rule and return the limit price (``None`` for market orders).
+
+        Everything is checked before the book changes, so a rejected order leaves no trace.
+        """
+        if not _is_int(order.qty) or order.qty <= 0:
+            raise InvalidOrderError(f"qty must be an integer greater than 0, got {order.qty!r}")
+        self._check_ts(order.ts)
+        if order.type is OrderType.MARKET:
+            if order.price is not None:
+                raise InvalidOrderError(
+                    f"a market order must not have a price, got {order.price!r}"
+                )
+        elif order.price is None or not _is_int(order.price) or order.price <= 0:
+            raise InvalidOrderError(
+                f"a limit order needs an integer price greater than 0, got {order.price!r}"
+            )
+        if order.order_id in self._orders:
+            raise DuplicateOrderIdError(f"order id {order.order_id} is already resting in the book")
+        return order.price
+
+    def _check_ts(self, ts: int) -> None:
+        """Reject timestamps that are not integers or that go backwards in time."""
+        if not _is_int(ts) or ts < self._last_ts:
+            raise InvalidOrderError(
+                f"ts must be an integer not earlier than {self._last_ts} "
+                f"(the previous call), got {ts!r}"
+            )
 
     def _match(self, order: Order, limit_price: int | None) -> tuple[list[Fill], int]:
         """Trade ``order`` against the opposite side and return ``(fills, unfilled_qty)``.
