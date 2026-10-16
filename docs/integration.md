@@ -11,6 +11,7 @@ blocking, record it here and ask before working around it.
 | 2026-10-16 | Exceptions live in `src/lobx/errors.py`. | Shared by the Python and C++ engines (the bindings translate to the same classes). |
 | 2026-10-16 | Packaging starts on `setuptools`; it moves to `scikit-build-core` in Phase 3. | There is no C++ code to build until Phase 3. |
 | 2026-10-16 | `ruff format` skips `*.md`. | `AGENTS.md` holds illustrative pseudo-code that must stay as written. |
+| 2026-10-16 | Timestamps may repeat but never go backwards across `submit` and `cancel`; an id may be reused once its order is gone. | Catches simulator clock bugs early; keeps the engine check cheap (only resting ids are tracked). The C++ engine must match. |
 
 ## Blockers
 
