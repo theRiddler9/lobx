@@ -93,12 +93,98 @@ the cheap case (ids currently resting).
 - Total quantity filled for an incoming order never exceeds its `qty`.
 - Sum of fill quantities on the maker and taker sides is equal for every trade.
 
+## Events and the event log (Phase 2)
+
+Every run writes an append-only **event log**. It is the single record of what happened: replaying
+it alone must rebuild the final book exactly, and later phases read it to build ML features.
+
+### Event types (`src/lobx/types.py`)
+
+| Type | Fields | Meaning |
+|---|---|---|
+| `SubmitEvent` | `order` | An order the engine accepted. Orders the engine rejects are never logged. |
+| `CancelEvent` | `order_id`, `ts`, `cancelled` | A cancel request and its outcome (`False` if the order was already gone). |
+| `FillEvent` | `fill`, `self_trade` | One trade. `self_trade` is `True` when maker and taker belong to the same agent. |
+
+`Event` is the union of the three.
+
+### Ordering rules
+
+- Events are in the order the engine handled them; `ts` never goes backwards.
+- The `FillEvent`s caused by an order come **directly after** its `SubmitEvent`, in execution order.
+- A cancel is logged whether or not it found an order, so a replay can check the answer.
+
+### File format (`.eventlog`)
+
+UTF-8 text, one JSON object per line, written with compact separators and a fixed key order so the
+same run always produces the same bytes.
+
+1. Line 1 is the header: `{"type":"meta","format":1,"seed":<int>,"config":{...}}`.
+2. Every other line is one event: `{"type":"submit",...}`, `{"type":"cancel",...}` or
+   `{"type":"fill",...}`, with one JSON field per dataclass field. Enums are written by name
+   (`"BUY"`, `"LIMIT"`); a market order has `"price":null`.
+
+A line that cannot be parsed raises `EventLogFormatError`.
+
+### Replay rules
+
+- Replay feeds every `SubmitEvent` and `CancelEvent` to a fresh engine, in order. `FillEvent`s are
+  not fed in: they are what the replay must **reproduce**.
+- If the engine produces different fills, or a different cancel result, replay raises
+  `ReplayMismatchError` with the position of the first difference.
+- Replay works on any engine that implements the `OrderBook` protocol, so the Python and C++ engines
+  can both be checked against the same log.
+
+## Agents, actions, and the market view (Phase 2)
+
+Code: `src/lobx/sim/actions.py` and `src/lobx/sim/agents/base.py`.
+
+### Actions
+
+An action is a **request**, not an order. The agent states what it wants and the market stamps on
+the order id, agent id and timestamp.
+
+| Action | Fields | Meaning |
+|---|---|---|
+| `Submit` | `side`, `order_type`, `price`, `qty` | Place a new order. `Submit.limit(...)` and `Submit.market(...)` build the two kinds. |
+| `Cancel` | `order_id` | Cancel one of the agent's **own** resting orders. Cancelling another agent's order raises `SimulationError`. |
+
+Actions returned from one wake are carried out in list order, all at the wake's timestamp.
+
+### The `Agent` protocol
+
+```python
+class Agent(Protocol):
+    agent_id: int
+
+    def first_wake(self, rng: Generator) -> int: ...
+    def wake(self, ts: int, view: MarketView, rng: Generator) -> list[Action]: ...
+    def next_wake(self, ts: int, rng: Generator) -> int | None: ...
+```
+
+- Times are absolute nanoseconds. `next_wake` must return a time strictly after `ts`, or `None` to
+  retire the agent. Waking at the same instant forever would stall the clock, so the market rejects it.
+- `rng` is a `numpy.random.Generator` owned by that agent. All randomness comes from it.
+- Agents are woken in time order. Agents scheduled for the same instant wake in the order they were
+  scheduled, so a run is deterministic.
+
+### The `MarketView` protocol
+
+Read-only. `ts`, `best_bid()`, `best_ask()`, `mid2()` (twice the mid-price, an integer),
+`last_trade_price()`, `reference_price()` (mid, else last trade, else the opening price; always
+defined), `snapshot(depth)`, `position(agent_id)` (signed shares), and `open_orders(agent_id)`
+(resting order ids, oldest first).
+
+### Randomness
+
+Each agent gets its own stream, `SeedSequence(seed, spawn_key=(agent_id,))`. A stream depends only
+on the run seed and the agent id, so adding or removing another agent never changes the numbers
+an existing agent draws.
+
 ## Contracts added in later phases
 
 These are listed in `AGENTS.md` and get their code stubs when the phase that needs them starts:
 
-- `Event` types and the event log (Phase 2)
-- `Agent`, `MarketView`, `Action` (Phase 2)
 - `ParentOrder`, `ExecutionStrategy` (Phase 4)
 - `extract_features` (Phase 5) with the rule that features at time `t` use only data with
   timestamp at or before `t`

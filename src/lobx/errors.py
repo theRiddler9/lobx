@@ -15,3 +15,15 @@ class InvalidOrderError(LobxError, ValueError):
 
 class DuplicateOrderIdError(InvalidOrderError):
     """An order id is already resting in the book."""
+
+
+class EventLogFormatError(LobxError, ValueError):
+    """An event log line could not be parsed (bad JSON, unknown event kind, missing field)."""
+
+
+class ReplayMismatchError(LobxError):
+    """Replaying a log produced different fills or cancel results than the log recorded."""
+
+
+class SimulationError(LobxError):
+    """An agent or the simulator broke a rule, such as cancelling another agent's order."""
