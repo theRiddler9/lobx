@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import TypeAlias
 
 
 class Side(Enum):
@@ -78,3 +79,38 @@ class BookSnapshot:
     ts: int
     bids: tuple[tuple[int, int], ...]
     asks: tuple[tuple[int, int], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SubmitEvent:
+    """An order the engine accepted. Orders the engine rejected are never logged."""
+
+    order: Order
+
+
+@dataclass(frozen=True, slots=True)
+class CancelEvent:
+    """A cancel request and its outcome.
+
+    ``cancelled`` is ``True`` if the order was resting and has been removed, and ``False`` if it
+    was unknown or already gone. Replay checks that the engine gives the same answer.
+    """
+
+    order_id: int
+    ts: int
+    cancelled: bool
+
+
+@dataclass(frozen=True, slots=True)
+class FillEvent:
+    """One trade, logged right after the ``SubmitEvent`` of the order that caused it.
+
+    ``self_trade`` is ``True`` when the maker and the taker belong to the same agent. The engine
+    allows self-trades, so the log is where they stay visible.
+    """
+
+    fill: Fill
+    self_trade: bool
+
+
+Event: TypeAlias = SubmitEvent | CancelEvent | FillEvent
