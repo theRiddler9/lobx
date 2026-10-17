@@ -12,6 +12,11 @@ blocking, record it here and ask before working around it.
 | 2026-10-16 | Packaging starts on `setuptools`; it moves to `scikit-build-core` in Phase 3. | There is no C++ code to build until Phase 3. |
 | 2026-10-16 | `ruff format` skips `*.md`. | `AGENTS.md` holds illustrative pseudo-code that must stay as written. |
 | 2026-10-16 | Timestamps may repeat but never go backwards across `submit` and `cancel`; an id may be reused once its order is gone. | Catches simulator clock bugs early; keeps the engine check cheap (only resting ids are tracked). The C++ engine must match. |
+| 2026-10-17 | `Submit` carries `side, order_type, price, qty` instead of a full `Order` (changes the first draft in `AGENTS.md`). | The market stamps order id, agent id and ts, so agents cannot forge them and order numbering is reproducible. |
+| 2026-10-17 | `Agent` has `first_wake` and `next_wake` besides `wake`. | The market owns the clock; agents only say when they want to be woken. |
+| 2026-10-17 | `MarketView.mid2()` returns twice the mid-price. | Keeps the mid an integer when the spread is an odd number of ticks. |
+| 2026-10-17 | numpy is pinned to an exact version. | `Generator` streams are not guaranteed identical across numpy versions; golden-seed tests flag a change. |
+| 2026-10-17 | Default market is tuned lively: market maker quotes 3 shares x 2 levels, noise traders 30% market orders with size scale 5. | The first defaults froze the price (0.04 ticks per second). About 1 tick per second is needed for execution and prediction experiments. |
 
 ## Blockers
 

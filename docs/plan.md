@@ -26,7 +26,7 @@ criteria hold, its `docs/learn/phase-N.md` exists, and the tag is created.
 
 - [x] Phase 0: scaffold, docs, contracts (tag `phase-0-scaffold`)
 - [x] Phase 1: Python reference engine (tag `phase-1-engine`)
-- [ ] Phase 2: event log, replay, simulator (tag `phase-2-sim`)
+- [x] Phase 2: event log, replay, simulator (tag `phase-2-sim`)
 - [ ] Phase 3: C++ engine and differential testing (tag `phase-3-cpp`)
 - [ ] Phase 4: baselines and evaluation harness (tag `phase-4-eval`)
 - [ ] Phase 5: ML level 1, order-flow predictor (tag `phase-5-ml`)
@@ -50,8 +50,8 @@ Record blockers and cross-component decisions in `docs/integration.md`.
 |---|---|---|
 | Types and protocols | stubs | Phase 0 |
 | Engine (Python) | done | Phase 1: limit and market orders, cancel, validation, 80 tests incl. property tests |
-| Event log and replay | not started | Phase 2 |
-| Simulator | not started | Phase 2 |
+| Event log and replay | done | Phase 2: text log, LoggedBook, replay with self-trade check |
+| Simulator | done | Phase 2: Market, 3 agent types, CLI run and replay, realism tests |
 | Engine (C++) | not started | Phase 3 |
 | Strategies and evaluation | not started | Phase 4 |
 | ML | not started | Phase 5 |
