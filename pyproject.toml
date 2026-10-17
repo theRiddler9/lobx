@@ -8,7 +8,12 @@ version = "0.1.0"
 description = "Limit-order-book exchange simulator with an ML-driven trade execution agent."
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "numpy==2.4.6",
+]
+
+[project.scripts]
+lobx = "lobx.cli:main"
 
 [dependency-groups]
 dev = [
