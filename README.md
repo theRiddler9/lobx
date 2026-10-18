@@ -26,7 +26,7 @@ Agents (noise, market maker, momentum, execution agent)
 - **Bit-Level Determinism**: A simulation run is a pure function of `(config, seed)`. Two runs with the same parameters produce byte-identical event logs and exact SHA-256 digests across different runs and environments.
 - **Dual Engine Architecture**: A clean, readable Python reference engine and a high-performance C++17 engine (via `pybind11`), verified by differential property tests against identical order streams.
 - **Append-Only Event Log & Exact Replay**: Every accepted order, cancel result, and fill is recorded. A fresh engine replaying the inputs must reproduce every fill, trade price, and self-trade flag identically.
-- **No-Lookahead Guarantee**: Strategies and feature pipelines are tested against lookahead (data leakage) via poison injection tests that modify future frames and verify decisions remain invariant.
+- **No-Lookahead Guarantee**: Strategies and feature pipelines are tested against lookahead (data leakage) via truncation and poison injection tests that verify decisions and features remain strictly causal.
 
 ---
 
@@ -39,8 +39,8 @@ Agents (noise, market maker, momentum, execution agent)
 | **Phase 2** | Event log, replay & simulator | **Complete** (`phase-2-sim`) | Nanosecond clock, priority wake queue, agent streams, noise/MM/momentum agents, CLI, determinism & realism tests |
 | **Phase 3** | C++ engine & differential testing | **Complete** (`phase-3-cpp`) | High-performance C++17 engine, pybind11 bindings, O(1) cancels, 1M-op differential tests, benchmarks |
 | **Phase 4** | Baselines & evaluation harness | **Complete** (`phase-4-eval`) | TWAP, VWAP, implementation shortfall metric, 200+ test seed evaluation, confidence intervals, lookahead poison test, results plot |
-| **Phase 5** | ML Level 1: Order-flow predictor | *Next* | Feature pipeline, short-horizon mid-price model, LightGBM / logreg |
-| **Phase 6** | ML Level 2: Adaptive execution | *Planned* | Model-driven child order placement, deadline enforcement |
+| **Phase 5** | ML Level 1: Order-flow predictor | **Complete** (`phase-5-ml`) | Feature pipeline (spread, depth 1/5 imbalance, returns, trade-flow), labels, Naive/Logistic/LightGBM, 134k test rows evaluation, calibration |
+| **Phase 6** | ML Level 2: Adaptive execution | *Next* | Model-driven child order placement, deadline enforcement, paired comparison vs TWAP/VWAP |
 | **Phase 7** | Service layer & dashboard | *Planned* | FastAPI service, WebSocket order book stream, Streamlit dashboard |
 | **Phase 8** | Hardening & release | *Planned* | End-to-end integration, performance profiling, documentation |
 
@@ -110,15 +110,42 @@ uv run lobx eval --strategies twap,vwap --seeds 200 --plot docs/figures/baseline
 
 ---
 
+## Order-Flow Prediction (ML Level 1)
+
+Phase 5 extracts causal microstructural features from book snapshots and trade flow (spread, depth 1 and 5 imbalance, windowed mid-returns, and trade-flow imbalance) to predict short-horizon mid-price movement (down, flat, up) over the next 1 second (5 snapshots of 200 ms).
+
+Models are trained on seeds `0..99`, early-stopped on validation seeds `100..199`, and scored on **133,938 held-out rows across test seeds `1000..1099`**:
+
+```bash
+uv run lobx train --train-seeds 100 --validation-seeds 100 --test-seeds 100 --out models
+```
+
+| Model | Rows | Accuracy | Log Loss | Directional Acc. | ECE Up | ECE Down |
+|---|---:|---:|---:|---:|---:|---:|
+| **Naive (majority class)** | 133,938 | 0.4510 | 1.0660 | 0.5558 | 0.0064 | 0.0101 |
+| **Multinomial Logistic** | 133,938 | 0.5345 | 0.9589 | 0.7000 | 0.0088 | 0.0559 |
+| **LightGBM (GBDT)** | 133,938 | 0.5992 | 0.8645 | 0.7410 | 0.0047 | 0.0049 |
+
+- **Beating the Baseline**: LightGBM achieves 59.9% multiclass accuracy and 74.1% directional accuracy on non-flat moves, beating the 45.1% naive baseline by 14.8 percentage points.
+- **Calibration**: Expected Calibration Error (ECE) under 0.005 shows predicted probabilities match real observed frequencies.
+- **Strict Causality**: Verified by truncation and poison tests proving features in row $t$ only read data at or before $t$.
+
+*(See [`docs/results.md`](docs/results.md) and [`docs/learn/phase-5.md`](docs/learn/phase-5.md) for detailed analysis).*
+
+---
+
 ## Running Tests & Quality Gates
 
-The test suite contains 436 unit, property, differential, and integration tests:
+The test suite contains 495 unit, property, differential, and causal integration tests:
 
 ```bash
 # Run all tests
 uv run pytest
 
-# Run lookahead (data leakage) poison test
+# Run feature causality (non-lookahead) tests
+uv run pytest tests/test_features_causal.py -v
+
+# Run strategy lookahead poison tests
 uv run pytest tests/test_leakage.py -v
 
 # Run C++ vs Python differential tests (1,000,000 random operations)
@@ -143,7 +170,7 @@ uv run mypy src tests
 
 ## Command Line Interface (CLI)
 
-LOBX provides a command-line interface for running simulations, replaying event logs, and evaluating execution algorithms.
+LOBX provides a unified command-line interface for running simulations, replaying event logs, evaluating execution algorithms, and training order-flow prediction models.
 
 ### 1. Run a Simulation
 
@@ -168,7 +195,7 @@ final book: best bid 9988, best ask 9992
 
 ### 2. Replay & Verify an Event Log
 
-Replay the recorded submits and cancels into a fresh engine and check that every trade, price, and self-trade flag matches:
+Replay recorded submits and cancels into a fresh engine and verify exact matching:
 
 ```bash
 uv run lobx replay run-seed-42.eventlog
@@ -190,16 +217,25 @@ Compare execution strategies across test seeds and generate a summary table and 
 uv run lobx eval --strategies twap,vwap --seeds 200 --plot docs/figures/baselines.png
 ```
 
+### 4. Train Order-Flow Predictors
+
+Train models to forecast short-horizon price moves and evaluate on test seeds:
+
+```bash
+uv run lobx train --train-seeds 100 --validation-seeds 100 --test-seeds 100 --out models
+```
+
 ---
 
 ## Documentation
 
 - [`AGENTS.md`](AGENTS.md): Full development guide, rules, and commit history for all phases.
 - [`docs/plan.md`](docs/plan.md): High-level checklist and integration status.
-- [`docs/results.md`](docs/results.md): Benchmark results, latency profiling, baseline shortfall tables.
+- [`docs/results.md`](docs/results.md): Benchmark results, latency profiling, baseline shortfall, and ML prediction scores.
 - [`docs/contracts/shared-contracts.md`](docs/contracts/shared-contracts.md): Core protocols (`OrderBook`, `Agent`, `ExecutionStrategy`, `MarketView`, `Action`) and event log format.
 - [`docs/integration.md`](docs/integration.md): Cross-component decisions and architectural log.
 - [`docs/learn/phase-1.md`](docs/learn/phase-1.md): Phase 1: order book mechanics, FIFO queues, matching rules, and property tests.
 - [`docs/learn/phase-2.md`](docs/learn/phase-2.md): Phase 2: discrete-event simulation, Poisson processes, inventory skew, and determinism.
 - [`docs/learn/phase-3.md`](docs/learn/phase-3.md): Phase 3: C++ order book architecture, O(1) cancellations, differential testing against 1M orders, pybind11 bindings.
 - [`docs/learn/phase-4.md`](docs/learn/phase-4.md): Phase 4: execution algorithms, implementation shortfall metric, multi-seed evaluation, lookahead poison test.
+- [`docs/learn/phase-5.md`](docs/learn/phase-5.md): Phase 5: microstructural features, labels, causality verification, LightGBM, calibration.
