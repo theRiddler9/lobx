@@ -100,4 +100,25 @@ std::vector<Fill> OrderBook::submit(const Order& order) {
   return fills;
 }
 
+bool OrderBook::cancel(OrderId id, Timestamp ts) {
+  check_ts(ts);
+  last_ts_ = ts;
+  const auto found = index_.find(id);
+  if (found == index_.end()) return false;
+  const Locator where = found->second;
+  Level& level = *where.level;
+  const Price price = level.price;  // read before the level can be erased below
+  level.total -= where.it->qty;
+  level.orders.erase(where.it);
+  index_.erase(found);
+  if (level.orders.empty()) {
+    if (where.side == Side::Buy) {
+      bids_.erase(price);
+    } else {
+      asks_.erase(price);
+    }
+  }
+  return true;
+}
+
 }  // namespace lobx
