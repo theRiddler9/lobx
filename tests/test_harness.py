@@ -9,6 +9,7 @@ from lobx.eval.harness import (
     run_many,
     run_one_seed,
 )
+from lobx.eval.seeds import TEST_SEEDS, TRAIN_SEEDS, VALIDATION_SEEDS
 from lobx.sim.clock import NS_PER_S
 from lobx.strategies.twap import TwapStrategy
 from lobx.types import Side
@@ -63,3 +64,7 @@ def test_background_trades_are_inside_the_run() -> None:
     assert all(0 <= ts <= SHORT.start_ns + SHORT.window_ns and qty > 0 for ts, qty in trades)
 
 
+def test_seed_ranges_are_disjoint() -> None:
+    train, validation, test = set(TRAIN_SEEDS), set(VALIDATION_SEEDS), set(TEST_SEEDS)
+    assert not (train & validation) and not (train & test) and not (validation & test)
+    assert len(TEST_SEEDS) >= 200
