@@ -23,9 +23,12 @@ from lobx.engine.native import NativeOrderBook
 from lobx.engine.protocol import OrderBook
 from lobx.engine.replay import replay
 from lobx.errors import LobxError
+from lobx.eval.harness import default_engine
 from lobx.eval.report import plot_results, results_table
 from lobx.eval.runner import STRATEGY_NAMES, evaluate
-from lobx.eval.seeds import TEST_SEEDS
+from lobx.eval.seeds import TEST_SEEDS, TRAIN_SEEDS, VALIDATION_SEEDS
+from lobx.ml.store import save_model
+from lobx.ml.train import evaluation_table, score_models, train_models
 from lobx.sim.clock import NS_PER_S
 from lobx.sim.market import Market
 from lobx.sim.population import MarketConfig
@@ -73,6 +76,24 @@ def _cmd_eval(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_train(args: argparse.Namespace) -> int:
+    engine = default_engine()
+    models = train_models(
+        TRAIN_SEEDS[: args.train_seeds], VALIDATION_SEEDS[: args.validation_seeds], engine=engine
+    )
+    test_seeds = range(TEST_SEEDS.start, TEST_SEEDS.start + args.test_seeds)
+    results = score_models(models, test_seeds, engine=engine)
+    print(f"trained on {args.train_seeds} seeds, early-stopped on {args.validation_seeds} seeds,")
+    print(f"scored on test seeds {test_seeds.start}..{test_seeds.stop - 1} (simulated market)")
+    print(evaluation_table(results))
+    if args.out is not None:
+        args.out.mkdir(parents=True, exist_ok=True)
+        for name, model in models.by_name().items():
+            save_model(model, args.out / f"{name}.json")
+        print(f"models saved in {args.out}/")
+    return 0
+
+
 def _cmd_replay(args: argparse.Namespace) -> int:
     log = EventLog.read(args.log)
     # replay() raises ReplayMismatchError, caught in main(), if the engine disagrees with the log.
@@ -114,6 +135,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     replay_parser.add_argument("log", type=Path, help="an .eventlog file written by 'run'")
     replay_parser.set_defaults(handler=_cmd_replay)
+
+    train_parser = commands.add_parser(
+        "train", help="train the order-flow models and score them on held-out seeds"
+    )
+    train_parser.add_argument("--train-seeds", type=int, default=100, help="default: 100")
+    train_parser.add_argument("--validation-seeds", type=int, default=100, help="default: 100")
+    train_parser.add_argument("--test-seeds", type=int, default=100, help="default: 100")
+    train_parser.add_argument(
+        "--out", type=Path, default=None, help="directory to save the fitted models in (JSON)"
+    )
+    train_parser.set_defaults(handler=_cmd_train)
 
     evaluate_parser = commands.add_parser(
         "eval", help="compare execution strategies on held-out seeds"
