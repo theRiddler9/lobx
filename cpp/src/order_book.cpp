@@ -8,6 +8,8 @@ namespace lobx {
 
 namespace {
 
+// True if an incoming order is willing to trade at `level_price`. A buyer accepts any ask at or
+// below its limit; a seller accepts any bid at or above its limit; a market order accepts any.
 bool crosses(const Order& order, Price level_price) {
   if (order.type == OrderType::Market) return true;
   const Price limit = *order.price;
@@ -23,6 +25,8 @@ void OrderBook::check_ts(Timestamp ts) const {
   }
 }
 
+// The checks run in the same order as the Python engine, because a call that breaks two rules
+// must raise the same kind of error from both engines.
 void OrderBook::validate(const Order& order) const {
   if (order.qty <= 0) {
     throw InvalidOrderError("qty must be an integer greater than 0, got " +
@@ -41,6 +45,55 @@ void OrderBook::validate(const Order& order) const {
     throw DuplicateOrderIdError("order id " + std::to_string(order.id) +
                                 " is already resting in the book");
   }
+}
+
+template <class Map>
+Qty OrderBook::match(Map& opposite, const Order& order, std::vector<Fill>& fills) {
+  Qty remaining = order.qty;
+  while (remaining > 0 && !opposite.empty()) {
+    auto level_it = opposite.begin();
+    Level& level = level_it->second;
+    if (!crosses(order, level.price)) break;
+    Resting& maker = level.orders.front();
+    const Qty traded = std::min(remaining, maker.qty);
+    fills.push_back(Fill{maker.id, order.id, order.side, level.price, traded, order.ts});
+    maker.qty -= traded;
+    level.total -= traded;
+    remaining -= traded;
+    if (maker.qty == 0) {
+      index_.erase(maker.id);
+      level.orders.pop_front();
+      if (level.orders.empty()) opposite.erase(level_it);
+    }
+  }
+  return remaining;
+}
+
+void OrderBook::rest(const Order& order, Qty qty) {
+  const Price price = *order.price;
+  auto place = [&](auto& side_map) {
+    auto [it, inserted] = side_map.try_emplace(price);
+    if (inserted) it->second.price = price;
+    Level& level = it->second;
+    level.orders.push_back(Resting{order.id, qty});
+    level.total += qty;
+    index_[order.id] = Locator{order.side, &level, std::prev(level.orders.end())};
+  };
+  if (order.side == Side::Buy) {
+    place(bids_);
+  } else {
+    place(asks_);
+  }
+}
+
+std::vector<Fill> OrderBook::submit(const Order& order) {
+  validate(order);
+  std::vector<Fill> fills;
+  const Qty remaining =
+      order.side == Side::Buy ? match(asks_, order, fills) : match(bids_, order, fills);
+  if (remaining > 0 && order.type == OrderType::Limit) rest(order, remaining);
+  last_ts_ = order.ts;
+  return fills;
 }
 
 }  // namespace lobx
