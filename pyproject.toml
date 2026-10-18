@@ -11,6 +11,8 @@ requires-python = ">=3.11"
 dependencies = [
     "numpy==2.4.6",
     "matplotlib==3.11.2",
+    "scikit-learn==1.9.1",
+    "lightgbm==4.7.0",
 ]
 
 [project.scripts]
@@ -44,7 +46,9 @@ select = ["E", "F", "I", "B", "UP", "SIM", "N", "D"]
 ignore = ["D203", "D213"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["D"]
+"tests/**" = ["D", "N806"]
+# Machine learning code names the feature matrix X, by long convention (scikit-learn, LightGBM).
+"src/lobx/ml/**" = ["N803", "N806"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "pep257"
@@ -53,6 +57,11 @@ convention = "pep257"
 python_version = "3.11"
 strict = true
 files = ["src"]
+
+[[tool.mypy.overrides]]
+# scikit-learn and LightGBM ship no complete type information.
+module = ["sklearn.*", "lightgbm.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
