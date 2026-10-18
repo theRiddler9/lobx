@@ -94,3 +94,46 @@ Command: `pytest tests/test_leakage.py`
 TWAP and VWAP pass the poison test; a deliberately peeking strategy raises `LookaheadError`. The
 test covers decisions made from recorded book snapshots. It cannot prove the absence of every
 possible leak, only that a strategy's decisions up to time t do not change when later data does.
+
+## Phase 5: order-flow predictor
+
+The model predicts which way the mid-price moves over the next 1 second (5 snapshots of 200 ms):
+down, flat, or up. Features: spread, order-book imbalance at depth 1 and 5, mid-price change over
+1, 5 and 25 snapshots, and trade-flow imbalance over 1 s and 5 s. Rows come from 300-second runs
+of the **simulated** market, after a 30-second warm-up.
+
+Seeds: trained on 0..99; LightGBM early-stopped on 100..199; **scored on test seeds 1000..1099**
+(133,938 rows), which were never used to fit or tune anything. The 1-second horizon was picked by a
+quick look at validation seeds only (2, 5 and 10 snapshots were tried; the test seeds were not
+touched).
+
+Command: `python -m lobx.cli train --out models` (about 2 minutes, C++ engine)
+
+| model | rows | accuracy | log loss | direction acc. | ECE up | ECE down |
+|---|---:|---:|---:|---:|---:|---:|
+| naive | 133938 | 0.4510 | 1.0660 | 0.5558 | 0.0064 | 0.0101 |
+| logistic | 133938 | 0.5345 | 0.9589 | 0.7000 | 0.0088 | 0.0559 |
+| lightgbm | 133938 | 0.5992 | 0.8645 | 0.7410 | 0.0047 | 0.0049 |
+
+- *naive* always predicts the training class frequencies. *direction acc.* is accuracy on rows where
+  the mid really moved (up versus down). The naive model scores 55.6% because down moves are
+  commoner than up moves in this market (a downward drift), so even guessing "down" wins.
+  *ECE* is the expected calibration error of the up and down probabilities (0 = perfectly
+  calibrated; "70%" really happens 70% of the time).
+- **Both models beat the naive baseline** on held-out seeds, LightGBM clearly (accuracy 0.599 against
+  0.451; log loss 0.865 against 1.066) and with good calibration (ECE under 0.005). Logistic
+  regression gets much of the directional skill but is poorly calibrated for "down".
+- **Caveats.** Rows within one run are strongly correlated, so 134k rows is not 134k independent
+  samples; the real sample size is closer to the 100 seeds. No confidence intervals are reported
+  for these metrics yet. The simulated market is made of simple agents (a market maker quoting
+  around a reference price, noise traders, a momentum trader), so predictability here may be
+  easier than in a real market. This result says the pipeline finds signal in the simulator. It
+  does not say the signal is profitable: that is what Phase 6 tests.
+
+## Feature leakage test
+
+Command: `pytest tests/test_features_causal.py`
+
+Each feature row recomputed from only the data available at time t equals the row computed from
+the whole run, and replacing everything after t with garbage does not change it. A deliberately
+leaky feature fails both checks.
