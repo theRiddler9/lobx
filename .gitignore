@@ -28,3 +28,4 @@ _skbuild/
 # compiled C++ extension
 *.so
 *.pyd
+models/
