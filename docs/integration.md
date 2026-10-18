@@ -17,6 +17,9 @@ blocking, record it here and ask before working around it.
 | 2026-10-17 | `MarketView.mid2()` returns twice the mid-price. | Keeps the mid an integer when the spread is an odd number of ticks. |
 | 2026-10-17 | numpy is pinned to an exact version. | `Generator` streams are not guaranteed identical across numpy versions; golden-seed tests flag a change. |
 | 2026-10-17 | Default market is tuned lively: market maker quotes 3 shares x 2 levels, noise traders 30% market orders with size scale 5. | The first defaults froze the price (0.04 ticks per second). About 1 tick per second is needed for execution and prediction experiments. |
+| 2026-10-18 | The C++ engine has no test framework: plain `CHECK` macro tests run by CTest. | The build environment has no network for Catch2/doctest; fewer dependencies. |
+| 2026-10-18 | `NativeOrderBook` raises `TypeError` (pybind11) for wrongly typed fields; range errors match the Python engine's types. | Type checks in the wrapper would slow every call; the differential test covers range-error parity. |
+| 2026-10-18 | Measured speedup from Python is 2-3x, not 10x; the engine alone is about 15x. | Boundary overhead dominates. Recorded in `docs/results.md`; a batch API is a possible follow-up. |
 
 ## Blockers
 
