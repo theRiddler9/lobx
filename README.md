@@ -26,6 +26,7 @@ Agents (noise, market maker, momentum, execution agent)
 - **Bit-Level Determinism**: A simulation run is a pure function of `(config, seed)`. Two runs with the same parameters produce byte-identical event logs and exact SHA-256 digests across different runs and environments.
 - **Dual Engine Architecture**: A clean, readable Python reference engine and a high-performance C++17 engine (via `pybind11`), verified by differential property tests against identical order streams.
 - **Append-Only Event Log & Exact Replay**: Every accepted order, cancel result, and fill is recorded. A fresh engine replaying the inputs must reproduce every fill, trade price, and self-trade flag identically.
+- **No-Lookahead Guarantee**: Strategies and feature pipelines are tested against lookahead (data leakage) via poison injection tests that modify future frames and verify decisions remain invariant.
 
 ---
 
@@ -37,8 +38,8 @@ Agents (noise, market maker, momentum, execution agent)
 | **Phase 1** | Python reference engine | **Complete** (`phase-1-engine`) | FIFO price levels, book sides, crossing matching, cancels, snapshots, property tests |
 | **Phase 2** | Event log, replay & simulator | **Complete** (`phase-2-sim`) | Nanosecond clock, priority wake queue, agent streams, noise/MM/momentum agents, CLI, determinism & realism tests |
 | **Phase 3** | C++ engine & differential testing | **Complete** (`phase-3-cpp`) | High-performance C++17 engine, pybind11 bindings, O(1) cancels, 1M-op differential tests, benchmarks |
-| **Phase 4** | Baselines & evaluation harness | *Next* | TWAP, VWAP, implementation shortfall metric, seed splits, leakage tests |
-| **Phase 5** | ML Level 1: Order-flow predictor | *Planned* | Feature pipeline, short-horizon mid-price model, LightGBM / logreg |
+| **Phase 4** | Baselines & evaluation harness | **Complete** (`phase-4-eval`) | TWAP, VWAP, implementation shortfall metric, 200+ test seed evaluation, confidence intervals, lookahead poison test, results plot |
+| **Phase 5** | ML Level 1: Order-flow predictor | *Next* | Feature pipeline, short-horizon mid-price model, LightGBM / logreg |
 | **Phase 6** | ML Level 2: Adaptive execution | *Planned* | Model-driven child order placement, deadline enforcement |
 | **Phase 7** | Service layer & dashboard | *Planned* | FastAPI service, WebSocket order book stream, Streamlit dashboard |
 | **Phase 8** | Hardening & release | *Planned* | End-to-end integration, performance profiling, documentation |
@@ -90,13 +91,35 @@ uv run python benchmarks/bench_engines.py --ops 1000000
 
 ---
 
+## Execution Baselines (TWAP & VWAP)
+
+Phase 4 evaluates classical benchmark execution algorithms inside the simulated market across 200 held-out test seeds (`1000..1199`). The task sells 3,000 shares (approx. 20% of market volume) across 30 time slices over 5 simulated minutes.
+
+Cost is measured in **implementation shortfall (bps)** relative to the arrival mid-price (lower is better):
+
+```bash
+uv run lobx eval --strategies twap,vwap --seeds 200 --plot docs/figures/baselines.png
+```
+
+| Strategy | Completed Seeds | Incomplete | Mean Shortfall (bps) | Std Dev (bps) | 95% CI for the Mean (bps) |
+|---|---:|---:|---:|---:|---|
+| **TWAP** | 198 | 2 | 56.54 | 41.14 | [50.77, 62.31] |
+| **VWAP** | 197 | 3 | 57.81 | 42.22 | [51.88, 63.74] |
+
+*(See [`docs/results.md`](docs/results.md) for analysis and [`docs/figures/baselines.png`](docs/figures/baselines.png) for the error-bar plot).*
+
+---
+
 ## Running Tests & Quality Gates
 
-The test suite contains 372 unit, property, differential, and integration tests:
+The test suite contains 436 unit, property, differential, and integration tests:
 
 ```bash
 # Run all tests
 uv run pytest
+
+# Run lookahead (data leakage) poison test
+uv run pytest tests/test_leakage.py -v
 
 # Run C++ vs Python differential tests (1,000,000 random operations)
 uv run pytest tests/test_native_differential.py -v
@@ -120,7 +143,7 @@ uv run mypy src tests
 
 ## Command Line Interface (CLI)
 
-LOBX provides a command-line interface for running simulations and verifying replay integrity with either the Python reference or C++ native engine.
+LOBX provides a command-line interface for running simulations, replaying event logs, and evaluating execution algorithms.
 
 ### 1. Run a Simulation
 
@@ -159,15 +182,24 @@ digest: 6632f059bc438e8cb28dbdd8b17b8f94d9bbfad4db0b49cb37d6eec08db82570
 final book: best bid 9988, best ask 9992
 ```
 
+### 3. Evaluate Execution Strategies
+
+Compare execution strategies across test seeds and generate a summary table and plot:
+
+```bash
+uv run lobx eval --strategies twap,vwap --seeds 200 --plot docs/figures/baselines.png
+```
+
 ---
 
 ## Documentation
 
 - [`AGENTS.md`](AGENTS.md): Full development guide, rules, and commit history for all phases.
 - [`docs/plan.md`](docs/plan.md): High-level checklist and integration status.
-- [`docs/results.md`](docs/results.md): Benchmark results, latency profiling, and engine comparison.
-- [`docs/contracts/shared-contracts.md`](docs/contracts/shared-contracts.md): Core protocols (`OrderBook`, `Agent`, `MarketView`, `Action`) and event log format.
+- [`docs/results.md`](docs/results.md): Benchmark results, latency profiling, baseline shortfall tables.
+- [`docs/contracts/shared-contracts.md`](docs/contracts/shared-contracts.md): Core protocols (`OrderBook`, `Agent`, `ExecutionStrategy`, `MarketView`, `Action`) and event log format.
 - [`docs/integration.md`](docs/integration.md): Cross-component decisions and architectural log.
-- [`docs/learn/phase-1.md`](docs/learn/phase-1.md): Phase 1 educational guide: order book mechanics, FIFO queues, matching rules, and property tests.
-- [`docs/learn/phase-2.md`](docs/learn/phase-2.md): Phase 2 educational guide: discrete-event simulation, Poisson processes, inventory skew, and determinism.
-- [`docs/learn/phase-3.md`](docs/learn/phase-3.md): Phase 3 educational guide: C++ order book architecture, O(1) cancellations, differential testing against 1M orders, pybind11 bindings.
+- [`docs/learn/phase-1.md`](docs/learn/phase-1.md): Phase 1: order book mechanics, FIFO queues, matching rules, and property tests.
+- [`docs/learn/phase-2.md`](docs/learn/phase-2.md): Phase 2: discrete-event simulation, Poisson processes, inventory skew, and determinism.
+- [`docs/learn/phase-3.md`](docs/learn/phase-3.md): Phase 3: C++ order book architecture, O(1) cancellations, differential testing against 1M orders, pybind11 bindings.
+- [`docs/learn/phase-4.md`](docs/learn/phase-4.md): Phase 4: execution algorithms, implementation shortfall metric, multi-seed evaluation, lookahead poison test.
