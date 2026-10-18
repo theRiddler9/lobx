@@ -52,3 +52,45 @@ Command: `pytest tests/test_native_differential.py`
 One million random operations plus 20 short streams: every fill, cancel result, best price and
 snapshot is identical between the engines. Mutation check: changing `<=` to `<` in the C++
 crossing rule makes the test fail at once.
+
+## Phase 4: baseline execution strategies
+
+Setup: sell 3,000 shares (about 20% of the market's volume in the window) between simulated
+t=60 s and t=360 s, in 30 slices of 100 shares, as market orders. Test seeds 1000..1199. VWAP's
+volume profile is estimated on training seeds 0..99. C++ engine. Everything is from a **simulated**
+market with simple agents; it says nothing about real markets.
+
+Command: `python -m lobx.cli eval --strategies twap,vwap --seeds 200 --plot docs/figures/baselines.png`
+(about 1.6 minutes on the machine described above, including the VWAP training runs)
+
+| strategy | seeds | incomplete | mean (bps) | std (bps) | 95% CI for the mean (bps) |
+|---|---:|---:|---:|---:|---|
+| twap | 198 | 2 | 56.54 | 41.14 | [50.77, 62.31] |
+| vwap | 197 | 3 | 57.81 | 42.22 | [51.88, 63.74] |
+
+Plot: `docs/figures/baselines.png`.
+
+How to read it:
+
+- **TWAP and VWAP are indistinguishable here.** The confidence intervals overlap almost entirely
+  and the estimated volume profile is flat (every bucket holds about 3.3% of volume, which is
+  1/30), so VWAP sends almost the same slices as TWAP. That is a property of the simulator, whose
+  agents trade at constant rates with no intraday volume pattern. It is not evidence that VWAP is
+  not useful in real markets. A formal paired comparison comes in Phase 6.
+- **The spread between seeds is large (std about 41 bps)** compared with the difference between
+  strategies. Most of a single run's cost comes from where the price drifts during the five
+  minutes, not from the algorithm.
+- **Incomplete runs.** In 2 (TWAP) and 3 (VWAP) of 200 seeds the order did not finish: the bid
+  side of the book was too thin when a slice ran, a market order's unfilled remainder is
+  discarded, and the final slice could not catch up. These runs have no measurable shortfall and
+  are excluded from the mean, which probably flatters both baselines slightly (thin books are the
+  expensive ones). Phase 6 must handle this explicitly: finish by the deadline, and compare
+  strategies only on seeds where both completed.
+
+## Lookahead test
+
+Command: `pytest tests/test_leakage.py`
+
+TWAP and VWAP pass the poison test; a deliberately peeking strategy raises `LookaheadError`. The
+test covers decisions made from recorded book snapshots. It cannot prove the absence of every
+possible leak, only that a strategy's decisions up to time t do not change when later data does.
