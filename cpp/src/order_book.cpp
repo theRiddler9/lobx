@@ -50,6 +50,8 @@ void OrderBook::validate(const Order& order) const {
 template <class Map>
 Qty OrderBook::match(Map& opposite, const Order& order, std::vector<Fill>& fills) {
   Qty remaining = order.qty;
+  // Walk the opposite side from its best price outwards. At each price the oldest order trades
+  // first (price-time priority) and every trade happens at the *resting* order's price.
   while (remaining > 0 && !opposite.empty()) {
     auto level_it = opposite.begin();
     Level& level = level_it->second;
@@ -63,6 +65,7 @@ Qty OrderBook::match(Map& opposite, const Order& order, std::vector<Fill>& fills
     if (maker.qty == 0) {
       index_.erase(maker.id);
       level.orders.pop_front();
+      // An empty level must not linger, or best_bid/best_ask would report a price nobody offers.
       if (level.orders.empty()) opposite.erase(level_it);
     }
   }
@@ -91,6 +94,7 @@ std::vector<Fill> OrderBook::submit(const Order& order) {
   std::vector<Fill> fills;
   const Qty remaining =
       order.side == Side::Buy ? match(asks_, order, fills) : match(bids_, order, fills);
+  // Only an order with a price can rest. A market order has none, so its remainder vanishes.
   if (remaining > 0 && order.type == OrderType::Limit) rest(order, remaining);
   last_ts_ = order.ts;
   return fills;
