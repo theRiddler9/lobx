@@ -29,7 +29,7 @@ criteria hold, its `docs/learn/phase-N.md` exists, and the tag is created.
 - [x] Phase 2: event log, replay, simulator (tag `phase-2-sim`)
 - [x] Phase 3: C++ engine and differential testing (tag `phase-3-cpp`)
 - [x] Phase 4: baselines and evaluation harness (tag `phase-4-eval`)
-- [ ] Phase 5: ML level 1, order-flow predictor (tag `phase-5-ml`)
+- [x] Phase 5: ML level 1, order-flow predictor (tag `phase-5-ml`)
 - [ ] Phase 6: ML level 2, adaptive execution (tag `phase-6-adaptive`)
 - [ ] Phase 7: service layer (tag `phase-7-service`)
 - [ ] Phase 8: hardening and release (tag `phase-8-release`)
@@ -54,5 +54,5 @@ Record blockers and cross-component decisions in `docs/integration.md`.
 | Simulator | done | Phase 2: Market, 3 agent types, CLI run and replay, realism tests |
 | Engine (C++) | done, differential-tested against Python | Phase 3 |
 | Strategies and evaluation | TWAP, VWAP, harness, stats, leakage test done; adaptive in Phase 6 | Phase 4 |
-| ML | not started | Phase 5 |
+| ML | features, labels, naive/logistic/LightGBM, evaluation done; used by Phase 6 | Phase 5 |
 | Service | not started | Phase 7 |

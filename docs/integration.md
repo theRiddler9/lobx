@@ -25,6 +25,9 @@ blocking, record it here and ask before working around it.
 | 2026-10-18 | The default parent order is 3,000 shares over 5 simulated minutes, not 50,000 over 30 minutes. | The simulated market trades about 3,000 shares a minute; the order is scaled to the market (about 20% of volume). |
 | 2026-10-18 | Runs where the parent order does not complete are counted and excluded, not valued with an opportunity cost. | Simple and visible in the table; Phase 6 must make strategies finish and compare on seeds complete for both. |
 | 2026-10-18 | The lookahead check is a poison test on recorded snapshots. | It shows decisions at t are unchanged when only data after t changes; it needs no live-market hooks. |
+| 2026-10-18 | Snapshots for ML are taken by a `SnapshotRecorder` agent every 200 ms and re-stamped with the wake time. | The engine stamps a snapshot with the last order time; features need evenly spaced times. |
+| 2026-10-18 | The model predicts down/flat/up of the mid over 1 s (5 snapshots); LightGBM and logistic are saved as JSON, `models/` is git-ignored. | Readable files that cannot run code; models are regenerated with `lobx train` (about 2 minutes). |
+| 2026-10-18 | Feature `trade_flow_*` needs a recent-trades feed that `MarketView` does not expose. | Open for Phase 6: either add recent trades to `MarketView` (a contract change on its own branch) or drop the flow features for the live strategy. |
 
 ## Blockers
 
