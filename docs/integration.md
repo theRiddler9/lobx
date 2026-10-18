@@ -20,6 +20,11 @@ blocking, record it here and ask before working around it.
 | 2026-10-18 | The C++ engine has no test framework: plain `CHECK` macro tests run by CTest. | The build environment has no network for Catch2/doctest; fewer dependencies. |
 | 2026-10-18 | `NativeOrderBook` raises `TypeError` (pybind11) for wrongly typed fields; range errors match the Python engine's types. | Type checks in the wrapper would slow every call; the differential test covers range-error parity. |
 | 2026-10-18 | Measured speedup from Python is 2-3x, not 10x; the engine alone is about 15x. | Boundary overhead dominates. Recorded in `docs/results.md`; a batch API is a possible follow-up. |
+| 2026-10-18 | `ParentOrder` is `(agent_id, side, qty, start_ns, end_ns)`; strategies read progress from `view.position(agent_id)`. | `ExecutionStrategy.step` only receives a view, so the id lets it find its own position without fill callbacks. |
+| 2026-10-18 | `implementation_shortfall_bps` takes `arrival_mid2` (twice the mid), not `arrival_mid` (changes the draft contract). | The mid of a one-tick-odd spread is half a tick; doubling it keeps an integer, like `MarketView.mid2()`. |
+| 2026-10-18 | The default parent order is 3,000 shares over 5 simulated minutes, not 50,000 over 30 minutes. | The simulated market trades about 3,000 shares a minute; the order is scaled to the market (about 20% of volume). |
+| 2026-10-18 | Runs where the parent order does not complete are counted and excluded, not valued with an opportunity cost. | Simple and visible in the table; Phase 6 must make strategies finish and compare on seeds complete for both. |
+| 2026-10-18 | The lookahead check is a poison test on recorded snapshots. | It shows decisions at t are unchanged when only data after t changes; it needs no live-market hooks. |
 
 ## Blockers
 
