@@ -14,7 +14,11 @@ from lobx.types import BookSnapshot, Fill
 
 FloatArray = npt.NDArray[np.float64]
 
-FEATURE_NAMES: tuple[str, ...] = ("spread",)
+FEATURE_NAMES: tuple[str, ...] = (
+    "spread",
+    "imbalance_1",
+    "imbalance_5",
+)
 
 
 def _best_prices(snapshots: Sequence[BookSnapshot]) -> tuple[FloatArray, FloatArray]:
@@ -30,9 +34,22 @@ def spread(snapshots: Sequence[BookSnapshot]) -> FloatArray:
     return ask - bid
 
 
+def _imbalance(snapshots: Sequence[BookSnapshot], depth: int) -> FloatArray:
+    """Return (bid qty - ask qty) / (bid qty + ask qty) over the best depth levels."""
+    out = np.full(len(snapshots), np.nan)
+    for i, snap in enumerate(snapshots):
+        bid_qty = sum(q for _, q in snap.bids[:depth])
+        ask_qty = sum(q for _, q in snap.asks[:depth])
+        if bid_qty > 0 and ask_qty > 0:
+            out[i] = (bid_qty - ask_qty) / (bid_qty + ask_qty)
+    return out
+
+
 def extract_features(snapshots: Sequence[BookSnapshot], fills: Sequence[Fill]) -> FloatArray:
     """Return an array of shape (len(snapshots), len(FEATURE_NAMES)); row t uses data <= t."""
     columns = [
         spread(snapshots),
+        _imbalance(snapshots, 1),
+        _imbalance(snapshots, 5),
     ]
     return np.column_stack(columns) if snapshots else np.empty((0, len(FEATURE_NAMES)))
