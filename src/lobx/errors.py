@@ -27,3 +27,7 @@ class ReplayMismatchError(LobxError):
 
 class SimulationError(LobxError):
     """An agent or the simulator broke a rule, such as cancelling another agent's order."""
+
+
+class NativeEngineUnavailableError(LobxError, ImportError):
+    """The C++ engine extension is not built, so ``NativeOrderBook`` cannot be used."""
