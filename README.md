@@ -36,8 +36,8 @@ Agents (noise, market maker, momentum, execution agent)
 | **Phase 0** | Scaffold, docs, contracts | **Complete** (`phase-0-scaffold`) | Types, errors, protocols, CI, architecture docs |
 | **Phase 1** | Python reference engine | **Complete** (`phase-1-engine`) | FIFO price levels, book sides, crossing matching, cancels, snapshots, property tests |
 | **Phase 2** | Event log, replay & simulator | **Complete** (`phase-2-sim`) | Nanosecond clock, priority wake queue, agent streams, noise/MM/momentum agents, CLI, determinism & realism tests |
-| **Phase 3** | C++ engine & differential testing | *Next* | High-performance C++17 engine, pybind11 bindings, benchmarks |
-| **Phase 4** | Baselines & evaluation harness | *Planned* | TWAP, VWAP, implementation shortfall metric, seed splits, leakage tests |
+| **Phase 3** | C++ engine & differential testing | **Complete** (`phase-3-cpp`) | High-performance C++17 engine, pybind11 bindings, O(1) cancels, 1M-op differential tests, benchmarks |
+| **Phase 4** | Baselines & evaluation harness | *Next* | TWAP, VWAP, implementation shortfall metric, seed splits, leakage tests |
 | **Phase 5** | ML Level 1: Order-flow predictor | *Planned* | Feature pipeline, short-horizon mid-price model, LightGBM / logreg |
 | **Phase 6** | ML Level 2: Adaptive execution | *Planned* | Model-driven child order placement, deadline enforcement |
 | **Phase 7** | Service layer & dashboard | *Planned* | FastAPI service, WebSocket order book stream, Streamlit dashboard |
@@ -47,26 +47,59 @@ Agents (noise, market maker, momentum, execution agent)
 
 ## Installation & Setup
 
-Prerequisites: Python 3.11+ and [`uv`](https://docs.astral.sh/uv/).
+Prerequisites: Python 3.11+, a C++17 compiler (GCC, Clang, or MSVC), CMake 3.20+, and [`uv`](https://docs.astral.sh/uv/).
 
 ```bash
 # Clone the repository
 git clone https://github.com/theRiddler9/lobx.git
 cd lobx
 
-# Install dependencies and sync environment
+# Install dependencies and build C++ native extension
 uv sync
 ```
 
 ---
 
+## Benchmarks & Engine Performance
+
+LOBX implements the matching engine twice:
+1. **Python reference engine** (`lobx.engine.book_py.OrderBookPy`): Clean reference implementation prioritizing readability and explicit invariants.
+2. **C++17 engine** (`cpp/include/lobx/order_book.hpp`, exposed via pybind11 as `NativeOrderBook`): High-performance matching engine utilizing `std::map` for sorted price levels and `std::unordered_map` for $O(1)$ order cancellation without scanning FIFO queues.
+
+### Standalone C++ Engine Throughput
+
+Tested standalone without Python interpreter overhead (`cmake --build build && ./lobx_bench 1000000`):
+- **Throughput**: **5,220,442 orders/s**
+- **Median Latency**: **124 ns**
+- **p99 Latency**: **463 ns**
+
+### Python vs Native Comparison (Called from Python)
+
+Run the benchmark suite:
+```bash
+uv run python benchmarks/bench_engines.py --ops 1000000
+```
+
+| Engine | Throughput (ops/s) | Median Latency | p99 Latency | Relative Speedup |
+|---|---:|---:|---:|---:|
+| **Python Reference** | 335,980 ops/s | 2,153 ns | 11,321 ns | 1.0x |
+| **Native (Wrapped Dataclasses)** | 724,793 ops/s | 841 ns | 5,101 ns | 2.2x |
+| **Native (Raw pybind11 ints)** | 1,072,217 ops/s | 710 ns | 2,414 ns | 3.2x |
+
+*(Measured on Linux x86_64 2-vCPU Xeon @ 2.10GHz. See [`docs/results.md`](docs/results.md) for full benchmark configuration).*
+
+---
+
 ## Running Tests & Quality Gates
 
-The test suite contains 340 unit, property, and integration tests:
+The test suite contains 372 unit, property, differential, and integration tests:
 
 ```bash
 # Run all tests
 uv run pytest
+
+# Run C++ vs Python differential tests (1,000,000 random operations)
+uv run pytest tests/test_native_differential.py -v
 
 # Run market realism tests (spread positivity, fat tails / kurtosis, price drift)
 uv run pytest tests/test_sim_realism.py -v
@@ -87,14 +120,18 @@ uv run mypy src tests
 
 ## Command Line Interface (CLI)
 
-LOBX provides a command-line interface for running simulations and verifying replay integrity.
+LOBX provides a command-line interface for running simulations and verifying replay integrity with either the Python reference or C++ native engine.
 
 ### 1. Run a Simulation
 
 Simulate a market and write an append-only `.eventlog`:
 
 ```bash
-uv run lobx run --seed 42 --duration 60 --out run-seed-42.eventlog
+# Run with C++ engine (default)
+uv run lobx run --engine native --seed 42 --duration 60 --out run-seed-42.eventlog
+
+# Or run with Python reference engine
+uv run lobx run --engine python --seed 42 --duration 60 --out run-seed-42.eventlog
 ```
 
 **Output:**
@@ -128,7 +165,9 @@ final book: best bid 9988, best ask 9992
 
 - [`AGENTS.md`](AGENTS.md): Full development guide, rules, and commit history for all phases.
 - [`docs/plan.md`](docs/plan.md): High-level checklist and integration status.
+- [`docs/results.md`](docs/results.md): Benchmark results, latency profiling, and engine comparison.
 - [`docs/contracts/shared-contracts.md`](docs/contracts/shared-contracts.md): Core protocols (`OrderBook`, `Agent`, `MarketView`, `Action`) and event log format.
 - [`docs/integration.md`](docs/integration.md): Cross-component decisions and architectural log.
 - [`docs/learn/phase-1.md`](docs/learn/phase-1.md): Phase 1 educational guide: order book mechanics, FIFO queues, matching rules, and property tests.
 - [`docs/learn/phase-2.md`](docs/learn/phase-2.md): Phase 2 educational guide: discrete-event simulation, Poisson processes, inventory skew, and determinism.
+- [`docs/learn/phase-3.md`](docs/learn/phase-3.md): Phase 3 educational guide: C++ order book architecture, O(1) cancellations, differential testing against 1M orders, pybind11 bindings.
