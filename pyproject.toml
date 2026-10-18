@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+requires = ["scikit-build-core==1.1.1", "pybind11==3.1.0"]
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "lobx"
@@ -23,8 +23,11 @@ dev = [
     "mypy==2.4.0",
 ]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+wheel.packages = ["src/lobx"]
+cmake.version = ">=3.18"
+build-dir = "build/{wheel_tag}"
 
 [tool.ruff]
 line-length = 100
