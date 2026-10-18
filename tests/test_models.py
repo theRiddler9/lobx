@@ -77,3 +77,30 @@ def test_logistic_model_must_be_fitted_first() -> None:
     with pytest.raises(RuntimeError, match="fit"):
         LogisticModel().predict_proba(np.zeros((1, 2)))
 
+
+def test_lightgbm_learns_a_nonlinear_problem_and_stops_early() -> None:
+    from lobx.ml.gbm import LightGBMModel
+
+    rng = np.random.default_rng(0)
+
+    def xor_data(n: int) -> Dataset:
+        # Class depends on the signs of BOTH features together: a straight line cannot separate it.
+        X = rng.normal(size=(n, 2))
+        y = ((X[:, 0] > 0) ^ (X[:, 1] > 0)).astype(np.int64)  # classes 0 and 1 only
+        return Dataset(X, y, np.zeros(n, dtype=np.int64))
+
+    train, validation, test = xor_data(3000), xor_data(1000), xor_data(1000)
+    model = LightGBMModel(rounds=300, patience=10)
+    model.fit(train, validation)
+    proba = model.predict_proba(test.X)
+    assert proba.shape == (1000, 3)
+    assert np.allclose(proba.sum(axis=1), 1.0)
+    assert (proba.argmax(axis=1) == test.y).mean() > 0.9
+    assert model.booster is not None and model.booster.num_trees() < 300 * 3  # stopped early
+
+
+def test_lightgbm_must_be_fitted_first() -> None:
+    from lobx.ml.gbm import LightGBMModel
+
+    with pytest.raises(RuntimeError, match="fit"):
+        LightGBMModel().predict_proba(np.zeros((1, 2)))
