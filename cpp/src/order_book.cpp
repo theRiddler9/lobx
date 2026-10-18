@@ -121,4 +121,25 @@ bool OrderBook::cancel(OrderId id, Timestamp ts) {
   return true;
 }
 
+Snapshot OrderBook::snapshot(std::size_t depth) const {
+  Snapshot snap{last_ts_, {}, {}};
+  for (auto it = bids_.begin(); it != bids_.end() && snap.bids.size() < depth; ++it) {
+    snap.bids.emplace_back(it->first, it->second.total);
+  }
+  for (auto it = asks_.begin(); it != asks_.end() && snap.asks.size() < depth; ++it) {
+    snap.asks.emplace_back(it->first, it->second.total);
+  }
+  return snap;
+}
+
+std::optional<Price> OrderBook::best_bid() const {
+  if (bids_.empty()) return std::nullopt;
+  return bids_.begin()->first;
+}
+
+std::optional<Price> OrderBook::best_ask() const {
+  if (asks_.empty()) return std::nullopt;
+  return asks_.begin()->first;
+}
+
 }  // namespace lobx
