@@ -23,6 +23,9 @@ from lobx.engine.native import NativeOrderBook
 from lobx.engine.protocol import OrderBook
 from lobx.engine.replay import replay
 from lobx.errors import LobxError
+from lobx.eval.report import plot_results, results_table
+from lobx.eval.runner import STRATEGY_NAMES, evaluate
+from lobx.eval.seeds import TEST_SEEDS
 from lobx.sim.clock import NS_PER_S
 from lobx.sim.market import Market
 from lobx.sim.population import MarketConfig
@@ -55,6 +58,18 @@ def _cmd_run(args: argparse.Namespace) -> int:
     print(f"log: {out}")
     print(f"digest: {_file_digest(out)}")
     print(f"final book: {_book_line(best_bid, best_ask)}")
+    return 0
+
+
+def _cmd_eval(args: argparse.Namespace) -> int:
+    names = [name.strip() for name in args.strategies.split(",") if name.strip()]
+    results = evaluate(names, args.seeds)
+    first = TEST_SEEDS.start
+    print(f"test seeds {first}..{first + args.seeds - 1} (simulated market; lower is better)")
+    print(results_table(results))
+    if args.plot is not None:
+        plot_results(results, args.plot)
+        print(f"plot: {args.plot}")
     return 0
 
 
@@ -99,6 +114,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     replay_parser.add_argument("log", type=Path, help="an .eventlog file written by 'run'")
     replay_parser.set_defaults(handler=_cmd_replay)
+
+    evaluate_parser = commands.add_parser(
+        "eval", help="compare execution strategies on held-out seeds"
+    )
+    evaluate_parser.add_argument(
+        "--strategies",
+        default=",".join(STRATEGY_NAMES),
+        help=f"comma-separated names from: {', '.join(STRATEGY_NAMES)} (default: all)",
+    )
+    evaluate_parser.add_argument(
+        "--seeds", type=int, default=200, help="number of test seeds (default: 200)"
+    )
+    evaluate_parser.add_argument(
+        "--plot", type=Path, default=None, help="also write a PNG of the results here"
+    )
+    evaluate_parser.set_defaults(handler=_cmd_eval)
     return parser
 
 
