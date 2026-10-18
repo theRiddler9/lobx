@@ -24,3 +24,7 @@ _skbuild/
 
 # Generated run output
 *.eventlog
+
+# compiled C++ extension
+*.so
+*.pyd

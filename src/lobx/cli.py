@@ -17,7 +17,10 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from lobx.engine.book_py import PythonOrderBook
 from lobx.engine.event_log import EventLog
+from lobx.engine.native import NativeOrderBook
+from lobx.engine.protocol import OrderBook
 from lobx.engine.replay import replay
 from lobx.errors import LobxError
 from lobx.sim.clock import NS_PER_S
@@ -40,7 +43,9 @@ def _book_line(best_bid: int | None, best_ask: int | None) -> str:
 def _cmd_run(args: argparse.Namespace) -> int:
     config = MarketConfig(seed=args.seed, duration_ns=round(args.duration * NS_PER_S))
     out = args.out if args.out is not None else Path(f"run-seed-{args.seed}.eventlog")
-    result = Market(config).run()
+    # Both engines give byte-identical logs (tests/test_cli_engines.py), so this is a speed choice.
+    book: OrderBook = NativeOrderBook() if args.engine == "native" else PythonOrderBook()
+    result = Market(config, book=book).run()
     result.log.write(out)
     snapshot = result.final_snapshot
     best_bid = snapshot.bids[0][0] if snapshot.bids else None
@@ -72,6 +77,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = commands.add_parser("run", help="simulate a market and write its event log")
     run.add_argument("--seed", type=int, default=0, help="random seed (default: 0)")
+    run.add_argument(
+        "--engine",
+        choices=("python", "native"),
+        default="python",
+        help="matching engine: the Python reference or the C++ one (default: python)",
+    )
     run.add_argument(
         "--duration", type=float, default=600.0, help="simulated seconds (default: 600)"
     )

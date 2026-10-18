@@ -1,16 +1,17 @@
 """Run the hand-computed scenarios in tests/fixtures/book_scenarios.json against the engine.
 
 The expected values were worked out on paper, not copied from the engine's output, so these tests
-check the engine against the rules and not against itself. The C++ engine reuses the same file.
+check the engine against the rules and not against itself. Both engines run the same file.
 """
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from lobx.engine.book_py import PythonOrderBook
+from lobx.engine.protocol import OrderBook
 from lobx.types import Fill, Order, OrderType, Side
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "book_scenarios.json"
@@ -43,8 +44,8 @@ def _order_from(step: dict[str, Any]) -> Order:
 
 
 @pytest.mark.parametrize("scenario", _SCENARIOS, ids=[s["name"] for s in _SCENARIOS])
-def test_scenario(scenario: dict[str, Any]) -> None:
-    book = PythonOrderBook()
+def test_scenario(scenario: dict[str, Any], engine: Callable[[], OrderBook]) -> None:
+    book = engine()
     for step in scenario["steps"]:
         if step["op"] == "cancel":
             assert book.cancel(step["id"], step["ts"]) is step["result"]
