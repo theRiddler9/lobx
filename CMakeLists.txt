@@ -9,6 +9,15 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 option(LOBX_BUILD_TESTS "Build the C++ unit tests and benchmark" OFF)
+# AddressSanitizer catches out-of-bounds access, use-after-free and leaks; UndefinedBehaviorSanitizer
+# catches signed overflow, bad shifts and similar. Both slow the code down several times, so this is
+# for testing, never for the benchmark numbers.
+option(LOBX_SANITIZE "Build the engine and its tests with ASan and UBSan" OFF)
+if(LOBX_SANITIZE)
+  add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=undefined
+                      -fno-omit-frame-pointer -g)
+  add_link_options(-fsanitize=address,undefined)
+endif()
 
 # The engine itself: plain C++17 with no dependencies.
 add_library(lobx_engine STATIC cpp/src/order_book.cpp)
@@ -38,4 +47,7 @@ if(LOBX_BUILD_TESTS)
 
   add_executable(lobx_bench cpp/bench/bench_order_book.cpp)
   target_link_libraries(lobx_bench PRIVATE lobx_engine)
+  # A short run of the benchmark stream (random orders and cancels) doubles as a stress test, most
+  # useful under LOBX_SANITIZE.
+  add_test(NAME lobx_stress COMMAND lobx_bench 200000)
 endif()
