@@ -10,12 +10,12 @@ import numpy as np
 from lobx.ml.features import extract_features
 from lobx.ml.labels import DOWN, UP
 from lobx.ml.model import Classifier
-from lobx.sim.actions import Action
+from lobx.sim.actions import Action, Cancel, Submit
 from lobx.sim.agents.base import MarketView
 from lobx.sim.clock import NS_PER_S
 from lobx.strategies.base import ParentOrder
 from lobx.strategies.twap import TwapStrategy
-from lobx.types import BookSnapshot
+from lobx.types import BookSnapshot, Side
 
 HISTORY = 26  # enough snapshots for the 25-step return feature
 SNAPSHOT_DEPTH = 5
@@ -79,3 +79,31 @@ class AdaptiveStrategy:
         if self._model is not None:
             self.observe(ts, view)
         return []
+
+    def _touch_price(self, view: MarketView) -> int:
+        """Return the best price on our own side: the ask for a seller, the bid for a buyer."""
+        assert self._parent is not None
+        touch = view.best_ask() if self._parent.side is Side.SELL else view.best_bid()
+        return touch if touch is not None else view.reference_price()
+
+    def _passive_actions(self, view: MarketView, behind: int, executed: int) -> list[Action]:
+        """Keep a limit order at the touch covering behind shares, replacing it if needed."""
+        assert self._parent is not None
+        side = self._parent.side
+        open_ids = view.open_orders(self._parent.agent_id)
+        if not open_ids:
+            self._resting = None
+        touch = self._touch_price(view)
+        actions: list[Action] = []
+        resting = self._resting
+        if resting is not None:
+            unfilled = resting.posted - (executed - resting.executed_at_post)
+            off_touch = resting.price > touch if side is Side.SELL else resting.price < touch
+            if unfilled >= behind and not off_touch:
+                return []
+            actions.extend(Cancel(order_id) for order_id in open_ids)
+        self._resting = None
+        if behind > 0:
+            actions.append(Submit.limit(side, touch, behind))
+            self._resting = _RestingOrder(touch, behind, executed)
+        return actions
