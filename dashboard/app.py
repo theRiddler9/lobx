@@ -9,6 +9,7 @@ done in small functions called at the bottom.
 from __future__ import annotations
 
 import os
+import time
 from typing import Any
 
 import pandas as pd
@@ -72,6 +73,63 @@ def show_run_result(run: dict[str, Any]) -> None:
     st.dataframe(pd.DataFrame(result["fills"]), width="stretch")
 
 
+def with_interval(frame: pd.DataFrame) -> pd.DataFrame:
+    """Add a "95% CI (bps)" text column built from the interval's two ends."""
+    frame = frame.copy()
+    frame["95% CI (bps)"] = [
+        f"[{low:.2f}, {high:.2f}]"
+        for low, high in zip(frame["ci_low_bps"], frame["ci_high_bps"], strict=True)
+    ]
+    return frame
+
+
+def comparison_tab(client: ApiClient) -> None:
+    """Compare strategies on held-out test seeds, with confidence intervals and paired verdicts."""
+    with st.form("comparison"):
+        chosen = st.multiselect("Strategies", STRATEGIES, default=["twap", "passive"])
+        seeds = st.slider("Test seeds", 2, 50, 10)
+        submitted = st.form_submit_button("Run comparison")
+    if not submitted:
+        st.info(
+            "Each strategy runs on the same seeds, so differences are paired. More seeds give "
+            "narrower intervals; the published 200-seed results are in docs/results.md."
+        )
+        return
+    if not chosen:
+        st.error("Pick at least one strategy.")
+        return
+
+    try:
+        started = client.start_comparison({"strategies": chosen, "seeds": seeds})
+        with st.spinner(f"Simulating {len(chosen)} strategies on {seeds} seeds..."):
+            info = client.get_comparison(started["id"])
+            while info["status"] not in ("done", "failed"):
+                time.sleep(0.5)
+                info = client.get_comparison(started["id"])
+    except ApiError as error:
+        st.error(str(error))
+        return
+    if info["status"] == "failed":
+        st.error(info["error"])
+        return
+
+    rows = pd.DataFrame(info["rows"]).set_index("name")
+    rows = with_interval(rows)
+    st.subheader("Implementation shortfall (bps, lower is better)")
+    st.dataframe(
+        rows[["seeds", "incomplete", "mean_bps", "std_bps", "95% CI (bps)"]], width="stretch"
+    )
+    st.bar_chart(rows["mean_bps"], y_label="mean shortfall (bps)")
+    if info["pairs"]:
+        st.subheader("Paired differences (a - b; negative means a is cheaper)")
+        pairs = pd.DataFrame(info["pairs"])
+        pairs = with_interval(pairs)
+        st.dataframe(
+            pairs[["a", "b", "seeds_used", "mean_bps", "95% CI (bps)", "verdict"]], width="stretch"
+        )
+    st.caption("Simulated market, simple agents. A confidence interval that contains 0 is a tie.")
+
+
 def main() -> None:
     """Draw the page."""
     st.set_page_config(page_title="LOBX", layout="wide")
@@ -91,8 +149,11 @@ def main() -> None:
         return
     st.sidebar.write(f"engine: **{health['engine']}**")
     st.sidebar.write(f"model: **{'ready' if health['model_available'] else 'not trained'}**")
-    st.subheader("Live order book")
-    live_book_tab(client)
+    live, comparison = st.tabs(["Live book", "Strategy comparison"])
+    with live:
+        live_book_tab(client)
+    with comparison:
+        comparison_tab(client)
 
 
 main()
