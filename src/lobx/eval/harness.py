@@ -15,6 +15,7 @@ from lobx.engine.book_py import PythonOrderBook
 from lobx.engine.native import NativeOrderBook, native_available
 from lobx.engine.protocol import OrderBook
 from lobx.eval.metrics import implementation_shortfall_bps
+from lobx.sim.agents.base import Agent
 from lobx.sim.clock import NS_PER_S
 from lobx.sim.market import Market
 from lobx.sim.population import MarketConfig, build_background_agents
@@ -24,6 +25,8 @@ from lobx.types import Fill, FillEvent, Side
 
 StrategyFactory = Callable[[], ExecutionStrategy]
 EngineFactory = Callable[[], OrderBook]
+# Builds a passive extra participant (for example a book recorder) given the next free agent id.
+ObserverFactory = Callable[[int], Agent]
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,22 +71,33 @@ class SeedResult:
     shortfall_bps: float | None
 
 
+@dataclass(frozen=True, slots=True)
+class RunDetail:
+    """A ``SeedResult`` together with the strategy's own fills, in execution order."""
+
+    result: SeedResult
+    fills: tuple[Fill, ...]
+
+
 def default_engine() -> EngineFactory:
     """Return the fastest available engine: the C++ one if built, else the Python reference."""
     return NativeOrderBook if native_available() else PythonOrderBook
 
 
-def run_one_seed(
+def run_detailed(
     factory: StrategyFactory,
     seed: int,
     config: EvalConfig | None = None,
     engine: EngineFactory | None = None,
     watching: bool = False,
-) -> SeedResult:
-    """Run a fresh strategy on the market for ``seed`` and return its implementation shortfall.
+    observer: ObserverFactory | None = None,
+) -> RunDetail:
+    """Run a fresh strategy on the market for ``seed``; return its shortfall and its fills.
 
     ``watching`` strategies wake every ``config.watch_interval_ns`` (see ``EvalConfig``) instead of
-    once per slice.
+    once per slice. ``observer`` adds one extra agent that must trade nothing (the service uses it
+    to record the book); it takes the id after the strategy's, and every agent draws from its own
+    random stream, so it cannot change the market (tests/test_harness.py checks this).
     """
     config = config or EvalConfig()
     market_config = config.market_config(seed)
@@ -96,7 +110,10 @@ def run_one_seed(
         if watching
         else StrategyAgent(factory(), parent, config.num_slices)
     )
-    market = Market(market_config, [*agents, agent], book=(engine or default_engine())())
+    participants: list[Agent] = [*agents, agent]
+    if observer is not None:
+        participants.append(observer(parent.agent_id + 1))
+    market = Market(market_config, participants, book=(engine or default_engine())())
 
     own_fills: list[Fill] = []
 
@@ -115,7 +132,18 @@ def run_one_seed(
         if executed == parent.qty
         else None
     )
-    return SeedResult(seed, executed, agent.arrival_mid2, shortfall)
+    return RunDetail(SeedResult(seed, executed, agent.arrival_mid2, shortfall), tuple(own_fills))
+
+
+def run_one_seed(
+    factory: StrategyFactory,
+    seed: int,
+    config: EvalConfig | None = None,
+    engine: EngineFactory | None = None,
+    watching: bool = False,
+) -> SeedResult:
+    """Run a fresh strategy on the market for ``seed`` and return its implementation shortfall."""
+    return run_detailed(factory, seed, config, engine, watching).result
 
 
 def run_many(
