@@ -42,8 +42,8 @@ Agents (noise, market maker, momentum, execution agent)
 | **Phase 4** | Baselines & evaluation harness | **Complete** (`phase-4-eval`) | TWAP, VWAP, implementation shortfall metric, 200+ test seed evaluation, confidence intervals, lookahead poison test, results plot |
 | **Phase 5** | ML Level 1: Order-flow predictor | **Complete** (`phase-5-ml`) | Feature pipeline (spread, depth 1/5 imbalance, returns, trade-flow), labels, Naive/Logistic/LightGBM, 134k test rows evaluation, calibration |
 | **Phase 6** | ML Level 2: Adaptive execution | **Complete** (`phase-6-adaptive`) | Model-driven child order placement, passive limit order placement at touch, aggressive fallback, deadline completion & non-overfill guarantees, paired comparison vs TWAP/VWAP, ablation study |
-| **Phase 7** | Service layer & dashboard | *Next* | FastAPI service, WebSocket order book stream, Streamlit dashboard |
-| **Phase 8** | Hardening & release | *Planned* | End-to-end integration, performance profiling, documentation |
+| **Phase 7** | Service layer & dashboard | **Complete** (`phase-7-service`) | FastAPI REST API, WebSocket live order book stream, Streamlit dashboard, Docker containerization & compose orchestration |
+| **Phase 8** | Hardening & release | *Next* | End-to-end integration, performance profiling, documentation |
 
 ---
 
@@ -157,13 +157,49 @@ Pairing removes market drift noise across random seeds to reveal statistically s
 
 ---
 
+## Service Layer & Interactive Dashboard (Phase 7)
+
+Phase 7 wraps the exchange simulator, execution strategies, and ML models into an asynchronous web service and an interactive web dashboard:
+
+1. **FastAPI Service (`src/lobx/service/`)**:
+   - Asynchronous job execution model (`HTTP 202 Accepted`) for simulation runs and multi-strategy comparisons.
+   - Pydantic v2 request/response schemas with boundary validation.
+   - WebSocket streaming endpoint (`WS /runs/{id}/stream`) providing paced real-time depth book replay.
+   - Interactive OpenAPI documentation available at `http://localhost:8000/docs`.
+
+2. **Streamlit Dashboard (`dashboard/app.py`)**:
+   - **Live Order Book Tab**: Submit parent order execution runs and watch the resting order book depth chart update live via WebSocket.
+   - **Strategy Comparison Tab**: Run head-to-head comparisons across random seeds, displaying shortfall distributions, 95% confidence intervals, and paired difference verdicts.
+
+3. **Docker Orchestration (`compose.yaml`)**:
+   - Single multi-stage container image with C++ engine compilation, OpenMP runtime, and pre-trained LightGBM models.
+   - `docker compose up` spins up the REST API on port `8000` and Streamlit UI on port `8501`.
+
+### Running the Service & Dashboard
+
+```bash
+# Start the FastAPI service (Terminal 1)
+uv run lobx serve --host 127.0.0.1 --port 8000
+
+# Start the Streamlit dashboard (Terminal 2)
+uv run streamlit run dashboard/app.py
+
+# Or launch both via Docker Compose
+docker compose up
+```
+
+---
+
 ## Running Tests & Quality Gates
 
-The test suite contains 550 unit, property, differential, and causal integration tests:
+The test suite contains 591 unit, property, differential, causal, and service integration tests:
 
 ```bash
 # Run all tests
 uv run pytest
+
+# Run service API, client, WebSocket, and dashboard tests
+uv run pytest tests/test_service_app.py tests/test_service_client.py tests/test_service_execution.py tests/test_dashboard.py -v
 
 # Run adaptive execution guarantees (completion by deadline, zero overfill)
 uv run pytest tests/test_adaptive_guarantees.py -v
@@ -251,6 +287,14 @@ Train models to forecast short-horizon price moves and evaluate on test seeds:
 uv run lobx train --train-seeds 100 --validation-seeds 100 --test-seeds 100 --out models
 ```
 
+### 5. Launch the Service API
+
+Start the FastAPI application and WebSocket server:
+
+```bash
+uv run lobx serve --host 127.0.0.1 --port 8000
+```
+
 ---
 
 ## Documentation
@@ -266,3 +310,4 @@ uv run lobx train --train-seeds 100 --validation-seeds 100 --test-seeds 100 --ou
 - [`docs/learn/phase-4.md`](docs/learn/phase-4.md): Phase 4: execution algorithms, implementation shortfall metric, multi-seed evaluation, lookahead poison test.
 - [`docs/learn/phase-5.md`](docs/learn/phase-5.md): Phase 5: microstructural features, labels, causality verification, LightGBM, calibration.
 - [`docs/learn/phase-6.md`](docs/learn/phase-6.md): Phase 6: adaptive order placement, deadline guarantees, paired comparisons, and ablation analysis.
+- [`docs/learn/phase-7.md`](docs/learn/phase-7.md): Phase 7: asynchronous job store, FastAPI HTTP 202 patterns, paced WebSocket order book streaming, Streamlit dashboard, and Docker setup.
