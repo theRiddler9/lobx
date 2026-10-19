@@ -233,3 +233,67 @@ enough to matter (a longer horizon, or a larger predicted move), or using the fo
   simulated volume is flat, so the estimated profile is noise around 1/30 per slice and only adds
   variation to the slice sizes.
 - Phase 4's baseline numbers are reproduced exactly (same seeds, same code path).
+
+## Profile: where evaluation time goes (Phase 8)
+
+Workload: the adaptive strategy on 8 test seeds (the slowest strategy: it wakes every 200 ms and
+asks the model each time), C++ engine, same machine as above, about 1 s per seed. Sampled with
+py-spy (a profiling tool, not a project dependency).
+
+Command: `py-spy record --nonblocking --format flamegraph --rate 200 -o docs/figures/flamegraph.svg -- python benchmarks/profile_eval.py --seeds 8`
+(open `docs/figures/flamegraph.svg` in a browser; it is interactive)
+
+Share of samples whose stack passes through each component (they overlap, so they do not add up to
+100%; 1,530 usable samples, 366 samples py-spy could not read were dropped; the share is
+approximate and varies by a few points between runs):
+
+| component | share of time |
+|---|---:|
+| model prediction (`ml/gbm.py`, one LightGBM call per wake) | about 59% |
+| feature extraction (`ml/features.py`) | about 26% |
+| background agents (noise, market maker, momentum) | about 11% |
+| orders applied to the matching engine (`Market._apply`) | about 5% |
+| Python engine wrapper (`engine/native.py`) | about 2% |
+
+- **The matching engine is not the bottleneck.** Even with the fast C++ engine most of the time
+  goes to asking a model for one row at a time: a single-row LightGBM `predict` through its Python
+  wrapper costs far more than matching an order. This is why Phase 3's engine speedup (15x in pure
+  C++) barely changes the evaluation run time.
+- A plain simulation of 300 simulated seconds takes about 0.17 s on the Python engine and 0.15 s
+  on the C++ engine (a one-off timing, no model involved), which agrees.
+- Where to look if evaluation must get faster: predict less often, predict in batches, or keep
+  the features incrementally instead of recomputing them from the snapshot history. None of that
+  has been done, because it would change the strategy's behaviour and the Phase 6 numbers.
+
+## Sanitizers and static analysis (Phase 8)
+
+Commands: `cmake -S . -B build/san -DLOBX_BUILD_TESTS=ON -DLOBX_SANITIZE=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo && cmake --build build/san && ctest --test-dir build/san`
+(unit tests plus a 200,000-order random stress stream under AddressSanitizer and
+UndefinedBehaviorSanitizer) and `clang-tidy -p build/tidy cpp/src/order_book.cpp cpp/bench/bench_order_book.cpp`.
+
+- **Sanitizers: no findings.** No out-of-bounds access, use-after-free, leak or undefined
+  behaviour on the unit tests or the stress stream. This does not cover the pybind11 binding layer,
+  which is not built with the sanitizers.
+- **clang-tidy: no real bugs, a few clean-ups.** The engine now takes the price as an explicit
+  argument where it used to unwrap an optional, getters are `[[nodiscard]]`, and the benchmark uses
+  iostream. The checks that stay off, and why, are listed in `.clang-tidy`. `bindings.cpp` is not
+  analysed (it needs Python's headers).
+
+## Golden demo verification (Phase 8)
+
+Checked from a fresh clone of the release branch, in a new virtual environment, on the machine
+described above. Steps refer to `docs/runbooks/demo.md`.
+
+| step | result |
+|---|---|
+| 1. `pip install -e ".[service]"` builds the C++ engine | passed |
+| 2. `pytest` (includes the one-million-order differential test) | 592 passed |
+| 3. `python -m lobx.cli run --seed 0`, then `replay` | same digest and final book (`best bid 10048, best ask 10050`); every fill and cancel matched |
+| 4. Benchmarks: `./build/cpp/lobx_bench 1000000` and `python benchmarks/bench_engines.py --ops 1000000` | ran; pure C++ about 16x the Python engine, 1.9x to 3.2x when called from Python. These runs shared the machine with the evaluation in step 5, so the absolute figures are lower than in the Phase 3 table; use that table for quoting |
+| 5. `python -m lobx.cli eval --strategies twap,vwap,adaptive --seeds 200` (model trained from scratch by the same command) | printed exactly the Phase 4 and Phase 6 numbers: twap 56.54, vwap 57.81, adaptive 19.45 bps |
+| 6. Lookahead test | passed (part of step 2) |
+| 7. `docker compose up` | **not verified**: Docker Hub is unreachable from the build sandbox. The Dockerfile's steps (install, train, serve, dashboard) were replayed in a clean virtual environment instead |
+| 8. README | present, with results table, architecture diagram, Limitations and "What failed" |
+
+Step 4 caveat: the "at least 10x" target holds for the engine in pure C++ and does not hold
+end-to-end from Python (see README, "What failed").
