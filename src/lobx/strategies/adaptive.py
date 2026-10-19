@@ -78,7 +78,19 @@ class AdaptiveStrategy:
             raise RuntimeError("call reset(parent) before step()")
         if self._model is not None:
             self.observe(ts, view)
-        return []
+        parent = self._parent
+        if ts < parent.start_ns:
+            return []
+        executed = parent.executed(view)
+        behind = max(self._pace.target_at(ts) - executed, 0)
+        probabilities = self.probabilities(ts, view)
+        if (
+            behind > 0
+            and probabilities is not None
+            and self.adverse_signal(probabilities) > self._threshold
+        ):
+            return self._aggressive_actions(view, behind)
+        return self._passive_actions(view, behind, executed)
 
     def _touch_price(self, view: MarketView) -> int:
         """Return the best price on our own side: the ask for a seller, the bid for a buyer."""
@@ -116,3 +128,14 @@ class AdaptiveStrategy:
             actions.append(Submit.limit(side, touch, behind))
             self._resting = _RestingOrder(touch, behind, executed)
         return actions
+
+    def adverse_signal(self, probabilities: tuple[float, float, float]) -> float:
+        """Return P(price moves against us) - P(price moves in our favour)."""
+        if self._parent is None:
+            raise RuntimeError("call reset(parent) before use")
+        against, favour = (
+            (probabilities[DOWN], probabilities[UP])
+            if self._parent.side is Side.SELL
+            else (probabilities[UP], probabilities[DOWN])
+        )
+        return against - favour
