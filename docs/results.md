@@ -137,3 +137,99 @@ Command: `pytest tests/test_features_causal.py`
 Each feature row recomputed from only the data available at time t equals the row computed from
 the whole run, and replacing everything after t with garbage does not change it. A deliberately
 leaky feature fails both checks.
+
+## Phase 6: adaptive execution versus TWAP and VWAP
+
+Same setup as Phase 4 (sell 3,000 shares between t=60 s and t=360 s; test seeds 1000..1199; C++
+engine). All results are from a **simulated** market with simple agents.
+
+The strategies:
+
+- **twap**, **vwap**: as in Phase 4 (market orders, one slice every 10 s).
+- **adaptive**: follows the TWAP pace, wakes every 200 ms, and uses the LightGBM model's forecast
+  of the next second. If P(price falls) minus P(price rises) is above a threshold it sells what is
+  owed at once with a market order; otherwise it rests a limit order at the best ask. Safety nets:
+  anything overdue by a full slice is sold at once, and everything left is sold in the last 5 s.
+  Threshold 0.9, chosen on validation seeds (below).
+- **passive**: the *same strategy with the model switched off* (no forecasts, so only resting
+  orders plus the safety nets). It is an ablation, added to show how much of the result comes from
+  the model and how much from passivity.
+
+Command: `python -m lobx.cli eval --strategies twap,vwap,passive,adaptive --seeds 200 --plot docs/figures/comparison.png`
+(6.2 minutes on the machine described above; model from `python -m lobx.cli train --out models`)
+
+| strategy | seeds | incomplete | mean (bps) | std (bps) | 95% CI for the mean (bps) |
+|---|---:|---:|---:|---:|---|
+| twap | 198 | 2 | 56.54 | 41.14 | [50.77, 62.31] |
+| vwap | 197 | 3 | 57.81 | 42.22 | [51.88, 63.74] |
+| passive | 200 | 0 | 19.25 | 19.54 | [16.53, 21.98] |
+| adaptive | 200 | 0 | 19.45 | 19.77 | [16.69, 22.20] |
+
+Paired by seed (a - b in bps; negative means a is cheaper; only seeds where both completed):
+
+| comparison | seeds used | a - b, mean (bps) | 95% CI (bps) | a cheaper on | verdict |
+|---|---:|---:|---|---:|---|
+| vwap - twap | 197 | 1.41 | [0.71, 2.10] | 26% of seeds | twap cheaper |
+| passive - twap | 198 | -37.25 | [-41.44, -33.06] | 99% of seeds | passive cheaper |
+| adaptive - twap | 198 | -37.06 | [-41.26, -32.85] | 99% of seeds | adaptive cheaper |
+| passive - vwap | 197 | -38.53 | [-42.86, -34.21] | 99% of seeds | passive cheaper |
+| adaptive - vwap | 197 | -38.34 | [-42.68, -34.00] | 99% of seeds | adaptive cheaper |
+| adaptive - passive | 200 | 0.19 | [-0.06, 0.45] | 0% of seeds | no clear difference |
+
+Plot: `docs/figures/comparison.png`.
+
+### The honest reading
+
+1. **The adaptive strategy beats TWAP and VWAP by about 37 bps on 99% of seeds, and it always
+   completes** (200 of 200; the baselines left 2 and 3 seeds unfinished).
+2. **But the model is not why.** The passive ablation, with no model at all, is just as cheap
+   (difference +0.19 bps, 95% CI [-0.06, 0.45]). The gain comes from *resting limit orders instead
+   of crossing the spread*, not from the forecast. Calling this an "ML win" would be wrong.
+3. **Using the model made things worse, not better.** Tuning on validation seeds 100..139
+   (`python -m lobx.cli tune`; adaptive minus TWAP, paired):
+
+   | threshold | adaptive mean (bps) | adaptive - TWAP, mean (bps) | 95% CI (bps) |
+   |---:|---:|---:|---|
+   | 0.30 | 56.46 | -0.92 | [-5.69, 3.84] |
+   | 0.50 | 49.83 | -7.55 | [-12.58, -2.53] |
+   | 0.70 | 37.62 | -19.77 | [-25.99, -13.54] |
+   | 0.90 | 20.61 | -36.77 | [-47.07, -26.48] |
+   | 1.00 | 20.61 | -36.77 | [-47.07, -26.48] |
+
+   The lower the threshold (the more often the forecast triggers a market order), the higher the
+   cost. The cheapest thresholds, 0.9 and 1.0, are those at which the model almost never fires.
+   Selecting the threshold on validation seeds therefore selected "ignore the model", which is why
+   adaptive and passive are indistinguishable on the test seeds.
+
+### Why the model does not help (analysis; the mechanisms below were not tested separately)
+
+- **The forecast is small compared with the cost of acting on it.** The model predicts a mid-price
+  move over one second; such moves are about one tick. Crossing the spread to dodge a one-tick
+  fall costs about a tick of spread plus the price impact of the order, so even a correct forecast
+  barely pays.
+- **A market sell moves the price against the seller in this simulator.** TWAP's 57 bps is mostly
+  impact and its aftermath: each market sell walks the book, and the momentum agents in the market
+  follow the falling price. Resting orders avoid both effects. This is a property of the simulated
+  agents, so the size of the 37 bps gap should not be expected to carry over to a real market.
+- **Passive orders have easy fills here.** Noise traders send random market orders (30% of their
+  orders), which keep hitting resting orders. The engine models queue position (price-time
+  priority), but there is no adverse selection from informed traders, no latency, and no fees or
+  rebates, all of which make passive trading harder in practice.
+- **The deadline rules cap the risk.** Passivity can delay a share by at most one slice, and
+  everything left is sold by t = 355 s. Those safety nets, not the model, guarantee completion.
+
+### What this does and does not show
+
+It shows that, in this simulator, a limit-order strategy with deadline safety nets is much cheaper
+than TWAP or VWAP market-order slicing, and it shows how to test that fairly: paired seeds, held-out
+test seeds, a no-model ablation. It does **not** show that the model has any execution value, and
+it says nothing about real markets. A fair next experiment would be a model whose forecast is large
+enough to matter (a longer horizon, or a larger predicted move), or using the forecast to decide
+*how much* to post passively rather than whether to cross the spread.
+
+### Other observations
+
+- VWAP is about 1.4 bps *more* expensive than TWAP (CI [0.71, 2.10]): small but not zero. The
+  simulated volume is flat, so the estimated profile is noise around 1/30 per slice and only adds
+  variation to the slice sizes.
+- Phase 4's baseline numbers are reproduced exactly (same seeds, same code path).
