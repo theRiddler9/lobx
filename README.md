@@ -1,313 +1,188 @@
 # LOBX
 
-Limit-order-book exchange simulator with an ML-driven trade execution agent, written in Python and C++17.
+A limit-order-book exchange simulator with an ML-assisted trade execution agent, written in Python
+and C++17. LOBX simulates a stock exchange with a real matching engine, fills it with simulated
+traders, and asks one question: can an execution strategy sell a large order for a lower cost than
+the standard TWAP and VWAP algorithms? Cost is measured as implementation shortfall in basis points.
 
-LOBX simulates an equity exchange with a price-time priority matching engine, populates it with simulated trading agents (market makers, noise traders, momentum traders), and tests whether an ML-adaptive trade execution agent can execute large parent orders (e.g. 50,000 shares over 30 simulated minutes) at lower implementation shortfall (in basis points) than classical TWAP and VWAP benchmarks.
+**Everything here is a simulation.** No real market data, broker or exchange is used, and no result
+says anything about real-market performance or profitability.
 
----
+## The short version of the results
 
-## Architecture & Pipeline
+All numbers: sell 3,000 shares over 5 simulated minutes, 200 held-out test seeds, mean cost in basis
+points (lower is better) with a 95% confidence interval. Command and details in
+[`docs/results.md`](docs/results.md).
 
-```text
-Agents (noise, market maker, momentum, execution agent)
-  -> Orders (integer ticks, integer ns)
-  -> Matching Engine (Python reference OR C++ via pybind11)
-  -> Event Log (append-only, deterministic replay)
-  -> Book Snapshots
-  -> Feature Pipeline
-  -> ML Model (order-flow predictor)
-  -> Execution Strategy (TWAP / VWAP / ML-adaptive)
-  -> Evaluation Harness (multi-seed, bps shortfall, confidence intervals)
-```
+`python -m lobx.cli eval --strategies twap,vwap,passive,adaptive --seeds 200`
 
-### Core Design Principles
-
-- **Integer Arithmetic**: Prices are integers in ticks; time is an integer in nanoseconds. Quantities are integer share counts. No floating-point rounding issues in book state or matching.
-- **Bit-Level Determinism**: A simulation run is a pure function of `(config, seed)`. Two runs with the same parameters produce byte-identical event logs and exact SHA-256 digests across different runs and environments.
-- **Dual Engine Architecture**: A clean, readable Python reference engine and a high-performance C++17 engine (via `pybind11`), verified by differential property tests against identical order streams.
-- **Append-Only Event Log & Exact Replay**: Every accepted order, cancel result, and fill is recorded. A fresh engine replaying the inputs must reproduce every fill, trade price, and self-trade flag identically.
-- **No-Lookahead Guarantee**: Strategies and feature pipelines are tested against lookahead (data leakage) via truncation and poison injection tests that verify decisions and features remain strictly causal.
-- **Strict Execution Invariants**: Execution strategies guarantee 100% parent order completion by the deadline with zero overfill risk under any adverse market condition.
-
----
-
-## Project Status
-
-| Phase | Description | Status | Deliverables |
-|---|---|---|---|
-| **Phase 0** | Scaffold, docs, contracts | **Complete** (`phase-0-scaffold`) | Types, errors, protocols, CI, architecture docs |
-| **Phase 1** | Python reference engine | **Complete** (`phase-1-engine`) | FIFO price levels, book sides, crossing matching, cancels, snapshots, property tests |
-| **Phase 2** | Event log, replay & simulator | **Complete** (`phase-2-sim`) | Nanosecond clock, priority wake queue, agent streams, noise/MM/momentum agents, CLI, determinism & realism tests |
-| **Phase 3** | C++ engine & differential testing | **Complete** (`phase-3-cpp`) | High-performance C++17 engine, pybind11 bindings, O(1) cancels, 1M-op differential tests, benchmarks |
-| **Phase 4** | Baselines & evaluation harness | **Complete** (`phase-4-eval`) | TWAP, VWAP, implementation shortfall metric, 200+ test seed evaluation, confidence intervals, lookahead poison test, results plot |
-| **Phase 5** | ML Level 1: Order-flow predictor | **Complete** (`phase-5-ml`) | Feature pipeline (spread, depth 1/5 imbalance, returns, trade-flow), labels, Naive/Logistic/LightGBM, 134k test rows evaluation, calibration |
-| **Phase 6** | ML Level 2: Adaptive execution | **Complete** (`phase-6-adaptive`) | Model-driven child order placement, passive limit order placement at touch, aggressive fallback, deadline completion & non-overfill guarantees, paired comparison vs TWAP/VWAP, ablation study |
-| **Phase 7** | Service layer & dashboard | **Complete** (`phase-7-service`) | FastAPI REST API, WebSocket live order book stream, Streamlit dashboard, Docker containerization & compose orchestration |
-| **Phase 8** | Hardening & release | *Next* | End-to-end integration, performance profiling, documentation |
-
----
-
-## Installation & Setup
-
-Prerequisites: Python 3.11+, a C++17 compiler (GCC, Clang, or MSVC), CMake 3.20+, and [`uv`](https://docs.astral.sh/uv/).
-
-```bash
-# Clone the repository
-git clone https://github.com/theRiddler9/lobx.git
-cd lobx
-
-# Install dependencies and build C++ native extension
-uv sync
-```
-
----
-
-## Benchmarks & Engine Performance
-
-LOBX implements the matching engine twice:
-1. **Python reference engine** (`lobx.engine.book_py.OrderBookPy`): Clean reference implementation prioritizing readability and explicit invariants.
-2. **C++17 engine** (`cpp/include/lobx/order_book.hpp`, exposed via pybind11 as `NativeOrderBook`): High-performance matching engine utilizing `std::map` for sorted price levels and `std::unordered_map` for $O(1)$ order cancellation without scanning FIFO queues.
-
-### Standalone C++ Engine Throughput
-
-Tested standalone without Python interpreter overhead (`cmake --build build && ./lobx_bench 1000000`):
-- **Throughput**: **5,220,442 orders/s**
-- **Median Latency**: **124 ns**
-- **p99 Latency**: **463 ns**
-
-### Python vs Native Comparison (Called from Python)
-
-Run the benchmark suite:
-```bash
-uv run python benchmarks/bench_engines.py --ops 1000000
-```
-
-| Engine | Throughput (ops/s) | Median Latency | p99 Latency | Relative Speedup |
-|---|---:|---:|---:|---:|
-| **Python Reference** | 335,980 ops/s | 2,153 ns | 11,321 ns | 1.0x |
-| **Native (Wrapped Dataclasses)** | 724,793 ops/s | 841 ns | 5,101 ns | 2.2x |
-| **Native (Raw pybind11 ints)** | 1,072,217 ops/s | 710 ns | 2,414 ns | 3.2x |
-
-*(Measured on Linux x86_64 2-vCPU Xeon @ 2.10GHz. See [`docs/results.md`](docs/results.md) for full benchmark configuration).*
-
----
-
-## Order-Flow Prediction (ML Level 1)
-
-Phase 5 extracts causal microstructural features from book snapshots and trade flow (spread, depth 1 and 5 imbalance, windowed mid-returns, and trade-flow imbalance) to predict short-horizon mid-price movement (down, flat, up) over the next 1 second (5 snapshots of 200 ms).
-
-Models are trained on seeds `0..99`, early-stopped on validation seeds `100..199`, and scored on **133,938 held-out rows across test seeds `1000..1099`**:
-
-```bash
-uv run lobx train --train-seeds 100 --validation-seeds 100 --test-seeds 100 --out models
-```
-
-| Model | Rows | Accuracy | Log Loss | Directional Acc. | ECE Up | ECE Down |
-|---|---:|---:|---:|---:|---:|---:|
-| **Naive (majority class)** | 133,938 | 0.4510 | 1.0660 | 0.5558 | 0.0064 | 0.0101 |
-| **Multinomial Logistic** | 133,938 | 0.5345 | 0.9589 | 0.7000 | 0.0088 | 0.0559 |
-| **LightGBM (GBDT)** | 133,938 | 0.5992 | 0.8645 | 0.7410 | 0.0047 | 0.0049 |
-
-- **Beating the Baseline**: LightGBM achieves 59.9% multiclass accuracy and 74.1% directional accuracy on non-flat moves, beating the 45.1% naive baseline by 14.8 percentage points.
-- **Calibration**: Expected Calibration Error (ECE) under 0.005 shows predicted probabilities match real observed frequencies.
-- **Strict Causality**: Verified by truncation and poison tests proving features in row $t$ only read data at or before $t$.
-
-*(See [`docs/results.md`](docs/results.md) and [`docs/learn/phase-5.md`](docs/learn/phase-5.md) for detailed analysis).*
-
----
-
-## Adaptive Execution & Strategy Comparison (ML Level 2)
-
-Phase 6 implements `AdaptiveStrategy`, an execution algorithm that combines:
-1. **Passive Limit Orders**: Resting at the inside touch to earn the half-spread rather than paying it.
-2. **Order-Flow Model Timing**: Proactively crossing the spread with aggressive market orders when the LightGBM model forecasts an imminent adverse price move ($P(\text{adverse}) - P(\text{favourable}) > \theta$).
-3. **Execution Invariants**: Overdue catch-up and deadline margins guaranteeing 100% completion of the parent order by the deadline with zero overfill.
-
-### Results on 200 Held-Out Test Seeds (`1000..1199`)
-
-Selling 3,000 shares across 30 slices (5 minutes). Shortfall in basis points relative to the arrival mid (lower is better):
-
-```bash
-uv run lobx eval --strategies twap,vwap,passive,adaptive --compare --seeds 200 --plot docs/figures/comparison.png
-```
-
-#### Strategy Performance Table
-
-| Strategy | Completed Seeds | Incomplete | Mean Shortfall (bps) | Std Dev (bps) | 95% CI for the Mean (bps) |
+| strategy | seeds completed | incomplete | mean (bps) | std (bps) | 95% CI for the mean (bps) |
 |---|---:|---:|---:|---:|---|
-| **TWAP** | 198 | 2 | 56.54 | 41.14 | [50.77, 62.31] |
-| **VWAP** | 197 | 3 | 57.81 | 42.22 | [51.88, 63.74] |
-| **Passive (ablation, no model)** | 200 | 0 | 50.14 | 41.05 | [44.41, 55.87] |
-| **Adaptive (LightGBM)** | 200 | 0 | **45.69** | **40.50** | **[40.04, 51.34]** |
+| twap | 198 | 2 | 56.54 | 41.14 | [50.77, 62.31] |
+| vwap | 197 | 3 | 57.81 | 42.22 | [51.88, 63.74] |
+| passive | 200 | 0 | 19.25 | 19.54 | [16.53, 21.98] |
+| adaptive | 200 | 0 | 19.45 | 19.77 | [16.69, 22.20] |
 
-#### Paired Head-to-Head Comparison
+- A strategy that **rests limit orders** instead of crossing the spread is about 37 bps cheaper than
+  TWAP or VWAP on 99% of seeds, and always finishes.
+- **The ML model adds nothing.** `passive` is the adaptive strategy with the model switched off, and
+  it costs the same (difference +0.19 bps, 95% CI [-0.06, 0.45]). Letting the model trigger market
+  orders made things worse. See [What failed](#what-failed).
 
-Pairing removes market drift noise across random seeds to reveal statistically significant differences:
+![Mean shortfall by strategy](docs/figures/comparison.png)
 
-| Pair | Valid Seeds | Mean Difference (bps) | Std Dev (bps) | 95% CI for Difference | Win Rate | Verdict |
-|---|---:|---:|---:|---|---:|---|
-| **adaptive vs twap** | 198 | **-10.97 bps** | 9.07 | **[-12.24, -9.70]** | **91.4%** (181/198) | adaptive cheaper |
-| **adaptive vs vwap** | 197 | **-12.27 bps** | 10.63 | **[-13.76, -10.77]** | **90.9%** (179/197) | adaptive cheaper |
-| **adaptive vs passive** | 200 | **-4.45 bps** | 3.51 | **[-4.94, -3.96]** | **96.0%** (192/200) | adaptive cheaper |
+## What is in the box
 
-- **Ablation Insight**: Passive placement saves **6.4 bps** over TWAP by earning the spread. The LightGBM model contributes an additional **4.5 bps** of savings by anticipating adverse moves and taking liquidity before the price moves away.
-- **Reliability**: Adaptive execution finished on 200/200 seeds (TWAP and VWAP left unfilled orders on thin books).
+| Part | Where | What it does |
+|---|---|---|
+| Matching engine, Python | `src/lobx/engine/book_py.py` | Readable reference: price-time priority, limit and market orders, cancels, partial fills |
+| Matching engine, C++ | `cpp/`, bound with pybind11 | Same behaviour, much faster; tested against the Python engine on a million random orders |
+| Event log and replay | `src/lobx/engine/event_log.py`, `replay.py` | Every submit, cancel and fill is logged; a log replays to the identical book |
+| Simulator | `src/lobx/sim/` | Seeded clock and random streams; noise traders, a market maker, a momentum trader |
+| Execution strategies | `src/lobx/strategies/` | TWAP, VWAP, and an adaptive strategy (passive limit orders, model-driven aggression, deadline safety nets) |
+| ML | `src/lobx/ml/` | Features from the book, a short-horizon price-move label, naive / logistic / LightGBM models |
+| Evaluation | `src/lobx/eval/` | Many seeds, shortfall in bps, confidence intervals, paired comparison, a lookahead test |
+| Service | `src/lobx/service/`, `dashboard/` | FastAPI API, WebSocket book stream, Streamlit dashboard |
 
-*(See [`docs/results.md`](docs/results.md), [`docs/learn/phase-6.md`](docs/learn/phase-6.md), and [`docs/figures/comparison.png`](docs/figures/comparison.png)).*
+## Architecture
 
----
+```mermaid
+flowchart LR
+    A["Agents<br/>noise, market maker,<br/>momentum, strategy"] -->|orders| M["Market<br/>(single thread, seeded)"]
+    M -->|apply| E["Matching engine<br/>Python or C++"]
+    E -->|fills| M
+    E -->|every submit, cancel, fill| L[("Event log<br/>append-only")]
+    M -->|book snapshots| F["Feature pipeline"]
+    F --> ML["ML model<br/>price-move forecast"]
+    ML --> S["Execution strategy<br/>TWAP / VWAP / adaptive"]
+    S -->|child orders| A
+    M --> V["Evaluation harness<br/>many seeds, shortfall in bps,<br/>confidence intervals"]
+    V --> R["Results tables and plots"]
+    M --> API["FastAPI + WebSocket"] --> D["Streamlit dashboard"]
+```
 
-## Service Layer & Interactive Dashboard (Phase 7)
+The engine is the only component that changes the book. A run is a pure function of its
+configuration and seed. More detail, including what each stage may and may not touch:
+[`docs/architecture.md`](docs/architecture.md).
 
-Phase 7 wraps the exchange simulator, execution strategies, and ML models into an asynchronous web service and an interactive web dashboard:
+## Install
 
-1. **FastAPI Service (`src/lobx/service/`)**:
-   - Asynchronous job execution model (`HTTP 202 Accepted`) for simulation runs and multi-strategy comparisons.
-   - Pydantic v2 request/response schemas with boundary validation.
-   - WebSocket streaming endpoint (`WS /runs/{id}/stream`) providing paced real-time depth book replay.
-   - Interactive OpenAPI documentation available at `http://localhost:8000/docs`.
-
-2. **Streamlit Dashboard (`dashboard/app.py`)**:
-   - **Live Order Book Tab**: Submit parent order execution runs and watch the resting order book depth chart update live via WebSocket.
-   - **Strategy Comparison Tab**: Run head-to-head comparisons across random seeds, displaying shortfall distributions, 95% confidence intervals, and paired difference verdicts.
-
-3. **Docker Orchestration (`compose.yaml`)**:
-   - Single multi-stage container image with C++ engine compilation, OpenMP runtime, and pre-trained LightGBM models.
-   - `docker compose up` spins up the REST API on port `8000` and Streamlit UI on port `8501`.
-
-### Running the Service & Dashboard
+Needs Python 3.11 or newer, a C++17 compiler (g++ or clang++) and CMake 3.18 or newer.
 
 ```bash
-# Start the FastAPI service (Terminal 1)
-uv run lobx serve --host 127.0.0.1 --port 8000
-
-# Start the Streamlit dashboard (Terminal 2)
-uv run streamlit run dashboard/app.py
-
-# Or launch both via Docker Compose
-docker compose up
+git clone <this repository> lobx && cd lobx
+pip install -e .                 # builds the C++ engine and installs the package
+pip install -e ".[service]"      # optional: the API and the dashboard
 ```
 
----
+For development, use the lock file: `uv sync --locked --all-extras` (installs the tests and linters
+too). The tools use the C++ engine when it is built and the Python engine otherwise; asking for the native engine explicitly without a build raises a clear error.
 
-## Running Tests & Quality Gates
-
-The test suite contains 591 unit, property, differential, causal, and service integration tests:
+## Use
 
 ```bash
-# Run all tests
-uv run pytest
-
-# Run service API, client, WebSocket, and dashboard tests
-uv run pytest tests/test_service_app.py tests/test_service_client.py tests/test_service_execution.py tests/test_dashboard.py -v
-
-# Run adaptive execution guarantees (completion by deadline, zero overfill)
-uv run pytest tests/test_adaptive_guarantees.py -v
-
-# Run feature causality (non-lookahead) tests
-uv run pytest tests/test_features_causal.py -v
-
-# Run strategy lookahead poison tests
-uv run pytest tests/test_leakage.py -v
-
-# Run C++ vs Python differential tests (1,000,000 random operations)
-uv run pytest tests/test_native_differential.py -v
-
-# Run market realism tests (spread positivity, fat tails / kurtosis, price drift)
-uv run pytest tests/test_sim_realism.py -v
-
-# Run determinism tests (identical event logs across processes and seeds)
-uv run pytest tests/test_determinism.py -v
-
-# Run replay verification tests
-uv run pytest tests/test_replay_of_runs.py -v
-
-# Run code formatting, linter, and type checks
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy src tests
+python -m lobx.cli run --seed 0                  # simulate a market, write an event log
+python -m lobx.cli replay run-seed-0.eventlog    # replay the log; verifies the same final book
+python -m lobx.cli train --out models            # train the models (about 2 minutes)
+python -m lobx.cli eval --strategies twap,vwap,passive,adaptive --seeds 200   # about 6 minutes
+python -m lobx.cli serve                         # the API on http://localhost:8000/docs
+streamlit run dashboard/app.py                   # the dashboard on http://localhost:8501
+docker compose up                                # both of the above, in containers
 ```
 
----
+## Reproduce the numbers
 
-## Command Line Interface (CLI)
-
-LOBX provides a unified command-line interface for running simulations, replaying event logs, evaluating execution algorithms, and training order-flow prediction models.
-
-### 1. Run a Simulation
-
-Simulate a market and write an append-only `.eventlog`:
+Every number in this README and in [`docs/results.md`](docs/results.md) has the command that
+produced it written next to it. A run is a pure function of its configuration and seed, so the same
+command prints the same numbers. The test seeds (1000 to 1199) are never used for training or tuning
+(training uses 0 to 99; tuning uses validation seeds 100 to 199).
 
 ```bash
-# Run with C++ engine (default)
-uv run lobx run --engine native --seed 42 --duration 60 --out run-seed-42.eventlog
-
-# Or run with Python reference engine
-uv run lobx run --engine python --seed 42 --duration 60 --out run-seed-42.eventlog
+pytest                                          # all tests, including the Python-vs-C++ differential test
+cmake -S . -B build/cpp -DLOBX_BUILD_TESTS=ON && cmake --build build/cpp && ./build/cpp/lobx_bench 1000000
+python benchmarks/bench_engines.py --ops 1000000
 ```
 
-**Output:**
-```text
-seed 42, 60 simulated seconds
-events: 3348 (trades: 1124, self-trades: 4)
-log: run-seed-42.eventlog
-digest: 6632f059bc438e8cb28dbdd8b17b8f94d9bbfad4db0b49cb37d6eec08db82570
-final book: best bid 9988, best ask 9992
-```
+## Tests and checks
 
-### 2. Replay & Verify an Event Log
+- Unit tests and property tests (`hypothesis`) for the book: it never crosses and quantities never go
+  negative.
+- Differential test: the Python and C++ engines give identical fills and snapshots on one million
+  random orders.
+- Determinism and replay tests: the same seed gives a byte-identical event log, and a log replays
+  to the same book.
+- Lookahead tests: a strategy that peeks at the future is caught; features at time t use only data
+  up to t.
+- C++ unit tests, also under AddressSanitizer and UndefinedBehaviorSanitizer.
+- CI runs the lot on Linux and macOS (`.github/workflows/ci.yml`).
 
-Replay recorded submits and cancels into a fresh engine and verify exact matching:
+## Limitations
 
-```bash
-uv run lobx replay run-seed-42.eventlog
-```
+Read these before quoting any number.
 
-**Output:**
-```text
-replayed 3348 events (1124 trades) from run-seed-42.eventlog
-every fill, self-trade flag and cancel result matched the log
-digest: 6632f059bc438e8cb28dbdd8b17b8f94d9bbfad4db0b49cb37d6eec08db82570
-final book: best bid 9988, best ask 9992
-```
+- **It is a simulation.** The market is made of three simple kinds of agent (Poisson noise traders,
+  a market maker that skews its quotes with inventory, a momentum trader). There is no real data,
+  no informed trading, no latency, no fees or rebates, and no hidden or iceberg orders. Resting
+  orders fill easily here because noise traders keep sending market orders; in a real market,
+  passive orders face adverse selection and are harder to get filled. The size of the gap between
+  passive and aggressive execution should not be expected to carry over.
+- **The order is scaled to the market.** The plan's example was 50,000 shares over 30 minutes. The
+  simulated market trades only about 3,000 shares a minute, so the experiments sell 3,000 shares
+  over 5 minutes, about 20% of the volume in that window. That is a large share of volume.
+- **No intraday volume pattern.** Every simulated minute looks alike, so the estimated VWAP profile
+  is flat and VWAP is nearly the same algorithm as TWAP here. This says nothing about VWAP in
+  real markets.
+- **Incomplete runs are excluded, which flatters the baselines.** In 2 of 200 seeds TWAP and in 3
+  of 200 VWAP did not finish selling (the book was too thin; a market order's unfilled remainder
+  is discarded). Those seeds are left out of the baselines' means, and they are probably the
+  expensive ones. Paired comparisons use only seeds where both strategies finished.
+- **Statistics are modest.** 200 seeds, one scenario, intervals that assume the mean of the seeds
+  is roughly normal. The model's accuracy numbers come from rows within runs that are strongly
+  correlated, so the effective sample is closer to 100 seeds than to 134,000 rows, and they carry no
+  confidence intervals. The adaptive threshold was chosen on 40 validation seeds from a coarse
+  grid of five values.
+- **The lookahead tests are not proofs.** They show that decisions and features up to time t do not
+  change when later data is replaced, and that a planted bug is caught. They cannot show that no
+  other leak exists.
+- **Performance.** The C++ engine is about 15x faster than the Python engine in a pure C++
+  benchmark, but only 2 to 3x faster when called from Python, because each call crosses the
+  Python/C++ boundary. Evaluation time is dominated by the model and the features, not the engine
+  (see `docs/results.md`, "Profile").
+- **The service is a demo.** Jobs live in memory, there is no authentication, and the WebSocket
+  replays a finished run at an adjustable pace rather than a market computed live. Do not expose
+  it to the internet.
+- **Not verified in the build sandbox.** The Docker image and the macOS CI jobs were written but
+  could not be run where this was built (no route to Docker Hub or GitHub Actions). They are
+  untested until the first real run.
+- **One symbol, no reinforcement learning.** Multiple symbols, queue-position modelling, fees, and
+  the optional Gymnasium/PPO phase were not built.
 
-### 3. Evaluate Execution Strategies & Paired Comparison
+## What failed
 
-Compare execution strategies across test seeds and perform a paired statistical comparison:
+Stated plainly, as the project rules require.
 
-```bash
-uv run lobx eval --strategies twap,vwap,passive,adaptive --compare --seeds 200 --plot docs/figures/comparison.png
-```
+- **The ML model does not help execution.** The model does find signal: on held-out seeds it
+  predicts the next second's price move with accuracy 0.599 against 0.451 for a naive baseline,
+  and it is well calibrated. But the adaptive strategy that uses it costs 19.45 bps against 19.25
+  bps for the same strategy with the model switched off (difference +0.19 bps, 95% CI
+  [-0.06, 0.45]), and on validation seeds, the more often the forecast triggered a market order,
+  the higher the cost. The threshold that tuning picked is one at which the model almost never
+  fires. My untested explanations: a one-tick forecast is worth less than the spread and impact
+  paid to act on it; momentum agents amplify market sells; resting orders simply earn the spread.
+  The 37 bps advantage over TWAP and VWAP is real in this simulator, but it belongs to passive
+  limit orders, not to machine learning.
+- **VWAP did not beat TWAP.** It was 1.41 bps worse (95% CI [0.71, 2.10]), because the simulated
+  volume has no pattern for it to follow.
+- **The 10x speed target is met only in pure C++.** Called from Python the engine is 2.2x (wrapped)
+  to 3.2x (raw) faster than the Python reference. A batch API (many orders per call) would remove
+  most of the overhead; it was not built, so the end-to-end target is not met.
+- **TWAP and VWAP sometimes could not finish.** 2 and 3 of 200 seeds, as described above.
+- **Speeding up the engine did not speed up evaluation**, because the engine is about 5% of the
+  time; the model call is about 59%.
 
-### 4. Train Order-Flow Predictors
+## Project notes
 
-Train models to forecast short-horizon price moves and evaluate on test seeds:
-
-```bash
-uv run lobx train --train-seeds 100 --validation-seeds 100 --test-seeds 100 --out models
-```
-
-### 5. Launch the Service API
-
-Start the FastAPI application and WebSocket server:
-
-```bash
-uv run lobx serve --host 127.0.0.1 --port 8000
-```
-
----
-
-## Documentation
-
-- [`AGENTS.md`](AGENTS.md): Full development guide, rules, and commit history for all phases.
-- [`docs/plan.md`](docs/plan.md): High-level checklist and integration status.
-- [`docs/results.md`](docs/results.md): Benchmark results, latency profiling, baseline shortfall, ML prediction scores, and paired comparisons.
-- [`docs/contracts/shared-contracts.md`](docs/contracts/shared-contracts.md): Core protocols (`OrderBook`, `Agent`, `ExecutionStrategy`, `MarketView`, `Action`) and event log format.
-- [`docs/integration.md`](docs/integration.md): Cross-component decisions and architectural log.
-- [`docs/learn/phase-1.md`](docs/learn/phase-1.md): Phase 1: order book mechanics, FIFO queues, matching rules, and property tests.
-- [`docs/learn/phase-2.md`](docs/learn/phase-2.md): Phase 2: discrete-event simulation, Poisson processes, inventory skew, and determinism.
-- [`docs/learn/phase-3.md`](docs/learn/phase-3.md): Phase 3: C++ order book architecture, O(1) cancellations, differential testing against 1M orders, pybind11 bindings.
-- [`docs/learn/phase-4.md`](docs/learn/phase-4.md): Phase 4: execution algorithms, implementation shortfall metric, multi-seed evaluation, lookahead poison test.
-- [`docs/learn/phase-5.md`](docs/learn/phase-5.md): Phase 5: microstructural features, labels, causality verification, LightGBM, calibration.
-- [`docs/learn/phase-6.md`](docs/learn/phase-6.md): Phase 6: adaptive order placement, deadline guarantees, paired comparisons, and ablation analysis.
-- [`docs/learn/phase-7.md`](docs/learn/phase-7.md): Phase 7: asynchronous job store, FastAPI HTTP 202 patterns, paced WebSocket order book streaming, Streamlit dashboard, and Docker setup.
+- [`AGENTS.md`](AGENTS.md): the project's rules and phase plan
+- [`docs/results.md`](docs/results.md): every reported number, with its command
+- [`docs/learn/`](docs/learn): plain-language notes for each phase, with practice exercises
+- [`docs/integration.md`](docs/integration.md): design decisions and deviations from the plan
