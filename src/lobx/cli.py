@@ -4,6 +4,8 @@ Commands:
 
 * ``run``: simulate a market and write its event log to a file.
 * ``replay``: read an event log back, replay it into a fresh engine, and verify it matches.
+* ``eval``, ``train``, ``tune``: the Phase 4-6 evaluation and model tools.
+* ``serve``: start the HTTP API (needs the ``service`` extra).
 
 The CLI is deliberately thin. It parses arguments, calls library code, and prints a short summary;
 nothing about how a market behaves lives here.
@@ -128,6 +130,21 @@ def _cmd_replay(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_serve(args: argparse.Namespace) -> int:
+    try:
+        import uvicorn  # optional: only the service needs it
+
+        from lobx.service.app import create_app
+    except ImportError as error:
+        raise LobxError(
+            f"the service needs its extra packages ({error}); install them with: "
+            "pip install -e '.[service]'"
+        ) from error
+    print(f"serving on http://{args.host}:{args.port} (docs at /docs); Ctrl+C to stop")
+    uvicorn.run(create_app(model_path=args.model), host=args.host, port=args.port)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser for the ``lobx`` command."""
     parser = argparse.ArgumentParser(prog="lobx", description="LOBX market simulator tools.")
@@ -198,6 +215,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--plot", type=Path, default=None, help="also write a PNG of the results here"
     )
     evaluate_parser.set_defaults(handler=_cmd_eval)
+
+    serve_parser = commands.add_parser("serve", help="start the HTTP API and WebSocket stream")
+    serve_parser.add_argument("--host", default="127.0.0.1", help="interface (default: localhost)")
+    serve_parser.add_argument("--port", type=int, default=8000)
+    serve_parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_PATH)
+    serve_parser.set_defaults(handler=_cmd_serve)
     return parser
 
 
