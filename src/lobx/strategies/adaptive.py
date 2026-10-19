@@ -86,6 +86,15 @@ class AdaptiveStrategy:
         touch = view.best_ask() if self._parent.side is Side.SELL else view.best_bid()
         return touch if touch is not None else view.reference_price()
 
+    def _aggressive_actions(self, view: MarketView, quantity: int) -> list[Action]:
+        """Cancel our resting order, then trade quantity at once with a market order."""
+        assert self._parent is not None
+        actions: list[Action] = [Cancel(i) for i in view.open_orders(self._parent.agent_id)]
+        self._resting = None
+        if quantity > 0:
+            actions.append(Submit.market(self._parent.side, quantity))
+        return actions
+
     def _passive_actions(self, view: MarketView, behind: int, executed: int) -> list[Action]:
         """Keep a limit order at the touch covering behind shares, replacing it if needed."""
         assert self._parent is not None
