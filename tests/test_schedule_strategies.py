@@ -98,3 +98,16 @@ def test_rejects_bad_weights(weights: list[float]) -> None:
 def test_twap_rejects_zero_slices() -> None:
     with pytest.raises(ValueError, match="num_slices"):
         TwapStrategy(0)
+
+
+def test_target_at_gives_the_cumulative_goal_of_the_current_slice() -> None:
+    strategy = TwapStrategy(4)
+    strategy.reset(ParentOrder(AGENT, Side.SELL, 100, start_ns=1_000, end_ns=1_400))
+    assert [strategy.target_at(ts) for ts in (999, 1_000, 1_099, 1_100, 1_399, 9_999)] == [
+        0,
+        25,
+        25,
+        50,
+        100,
+        100,
+    ]
