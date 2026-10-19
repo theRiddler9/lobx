@@ -2,7 +2,7 @@ from collections.abc import Sequence
 
 import pytest
 
-from lobx.eval.compare import comparison_table, paired_comparison
+from lobx.eval.compare import comparison_table, paired_comparison, verdict
 from lobx.eval.harness import SeedResult
 
 
@@ -47,3 +47,12 @@ def test_table_gives_a_verdict_from_the_interval() -> None:
     assert "cheap cheaper" in rows["cheap - twap"]
     assert "no clear difference" in rows["noisy - twap"]
     assert set(rows) == {"cheap - twap", "noisy - twap", "noisy - cheap"}
+
+
+def test_verdict_names_the_cheaper_strategy_or_admits_a_tie() -> None:
+    a = runs([8, 17, 27, 36, 47, 55])
+    b = runs([10, 20, 30, 40, 50, 60])
+    assert verdict(paired_comparison("a", a, "b", b)) == "a cheaper"
+    assert verdict(paired_comparison("b", b, "a", a)) == "a cheaper"  # order does not matter
+    noisy = runs([12, 18, 33, 38, 52, 58])
+    assert verdict(paired_comparison("n", noisy, "b", b)) == "no clear difference"
