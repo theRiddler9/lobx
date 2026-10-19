@@ -12,6 +12,7 @@ import pytest
 from lobx.eval.harness import EvalConfig
 from lobx.eval.leakage import Recorder, Recording, check_no_lookahead
 from lobx.ml.model import Classifier, FloatArray
+from lobx.sim.actions import Submit
 from lobx.sim.clock import NS_PER_S
 from lobx.sim.market import Market
 from lobx.sim.population import build_background_agents
@@ -87,6 +88,19 @@ def test_the_parent_order_completes_and_is_never_overfilled(name: str, side: Sid
         executed, peak = _run(strategy, seed, side)
         assert executed == CONFIG.parent_qty, (name, side, seed, executed)
         assert peak <= CONFIG.parent_qty, (name, side, seed, peak)
+
+
+def test_never_overfills_when_already_completed() -> None:
+    """A strategy whose parent quantity is fully filled emits no further submit actions."""
+    from fakes import FakeView
+
+    parent = CONFIG.parent(99)
+    strategy = AdaptiveStrategy(None, CONFIG.num_slices, threshold=0.3)
+    strategy.reset(parent)
+    view = FakeView(bid=99, ask=101)
+    view.positions[99] = -parent.qty  # already completely filled for a SELL
+    actions = strategy.step(parent.start_ns + 100, view)
+    assert not any(isinstance(a, Submit) for a in actions)
 
 
 def test_no_resting_order_is_left_behind_at_the_end() -> None:
