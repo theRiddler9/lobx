@@ -6,10 +6,12 @@ from lobx.engine.native import NativeOrderBook, native_available
 from lobx.eval.harness import (
     EvalConfig,
     background_trades,
+    run_detailed,
     run_many,
     run_one_seed,
 )
 from lobx.eval.seeds import TEST_SEEDS, TRAIN_SEEDS, VALIDATION_SEEDS
+from lobx.sim.agents.recorder import SnapshotRecorder
 from lobx.sim.clock import NS_PER_S
 from lobx.strategies.twap import TwapStrategy
 from lobx.types import Side
@@ -92,3 +94,24 @@ def test_a_watching_strategy_runs_and_sees_the_same_arrival_price() -> None:
     plain = run_one_seed(_twap, 3, SHORT)
     assert watched.arrival_mid2 == plain.arrival_mid2
     assert watched.executed == SHORT.parent_qty
+
+
+def test_run_detailed_returns_the_fills_behind_the_result() -> None:
+    detail = run_detailed(_twap, 3, SHORT)
+    assert detail.result == run_one_seed(_twap, 3, SHORT)
+    assert sum(fill.qty for fill in detail.fills) == SHORT.parent_qty
+    assert [f.ts for f in detail.fills] == sorted(f.ts for f in detail.fills)
+
+
+def test_an_observer_records_the_book_without_changing_the_run() -> None:
+    recorders: list[SnapshotRecorder] = []
+
+    def make(agent_id: int) -> SnapshotRecorder:
+        recorders.append(SnapshotRecorder(agent_id, NS_PER_S, depth=5))
+        return recorders[-1]
+
+    with_observer = run_detailed(_twap, 4, SHORT, observer=make)
+    assert with_observer == run_detailed(_twap, 4, SHORT)  # same shortfall, same fills
+    snapshots = recorders[0].snapshots
+    assert len(snapshots) == (SHORT.start_ns + SHORT.window_ns) // NS_PER_S
+    assert snapshots[-1].bids and snapshots[-1].asks
