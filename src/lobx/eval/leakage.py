@@ -21,7 +21,7 @@ from lobx.errors import LobxError
 from lobx.sim.actions import Action, Submit
 from lobx.sim.agents.base import MarketView
 from lobx.strategies.base import ExecutionStrategy, ParentOrder
-from lobx.types import BookSnapshot, OrderType, Side
+from lobx.types import BookSnapshot, Fill, OrderType, Side
 
 _POISON_TICKS = 1_000
 _DEPTH = 5
@@ -127,6 +127,9 @@ class _RecordedView:
 
     def open_orders(self, agent_id: int) -> tuple[int, ...]:
         return ()
+
+    def fills_after(self, ts: int) -> tuple[Fill, ...]:
+        return ()  # recordings hold book snapshots only
 
 
 def _decisions(

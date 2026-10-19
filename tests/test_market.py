@@ -208,3 +208,16 @@ def test_result_reports_roles_and_peak_positions() -> None:
     assert all(peak >= 0 for peak in result.peak_abs_position.values())
     assert result.log.seed == 1
     assert result.log.config == result.config.as_dict()
+
+
+def test_fills_after_is_the_public_trade_tape() -> None:
+    from lobx.sim.clock import NS_PER_S
+
+    config = MarketConfig(seed=2, duration_ns=30 * NS_PER_S)
+    market = Market(config)
+    result = market.run()
+    all_fills = [e.fill for e in result.log if isinstance(e, FillEvent)]
+    assert list(market.fills_after(-1)) == all_fills
+    midpoint = all_fills[len(all_fills) // 2].ts
+    assert list(market.fills_after(midpoint)) == [f for f in all_fills if f.ts > midpoint]
+    assert market.fills_after(all_fills[-1].ts) == ()

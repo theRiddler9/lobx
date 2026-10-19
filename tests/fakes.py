@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lobx.types import BookSnapshot
+from lobx.types import BookSnapshot, Fill
 
 
 class FakeView:
@@ -23,6 +23,7 @@ class FakeView:
         self._ts = ts
         self.positions: dict[int, int] = {}
         self.open: dict[int, tuple[int, ...]] = {}
+        self.tape: list[Fill] = []
 
     @property
     def ts(self) -> int:
@@ -58,3 +59,6 @@ class FakeView:
 
     def open_orders(self, agent_id: int) -> tuple[int, ...]:
         return self.open.get(agent_id, ())
+
+    def fills_after(self, ts: int) -> tuple[Fill, ...]:
+        return tuple(f for f in self.tape if f.ts > ts)
