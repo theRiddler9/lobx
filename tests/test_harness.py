@@ -68,3 +68,27 @@ def test_seed_ranges_are_disjoint() -> None:
     train, validation, test = set(TRAIN_SEEDS), set(VALIDATION_SEEDS), set(TEST_SEEDS)
     assert not (train & validation) and not (train & test) and not (validation & test)
     assert len(TEST_SEEDS) >= 200
+
+
+def test_a_watching_strategy_runs_and_sees_the_same_arrival_price() -> None:
+    import numpy as np
+
+    from lobx.ml.dataset import Dataset
+    from lobx.ml.model import NaiveModel
+    from lobx.strategies.adaptive import AdaptiveStrategy
+
+    model = NaiveModel()
+    model.fit(
+        Dataset(np.zeros((3, 1)), np.array([0, 1, 2], dtype=np.int64), np.zeros(3, dtype=np.int64))
+    )
+    watched = run_one_seed(
+        lambda: AdaptiveStrategy(
+            model, SHORT.num_slices, threshold=0.5, deadline_margin_ns=3 * NS_PER_S
+        ),
+        seed=3,
+        config=SHORT,
+        watching=True,
+    )
+    plain = run_one_seed(_twap, 3, SHORT)
+    assert watched.arrival_mid2 == plain.arrival_mid2
+    assert watched.executed == SHORT.parent_qty

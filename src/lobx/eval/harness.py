@@ -40,6 +40,11 @@ class EvalConfig:
     start_ns: int = 60 * NS_PER_S  # warm-up: let the book fill before the order arrives
     window_ns: int = 300 * NS_PER_S
     num_slices: int = 30
+    # A strategy that "watches" wakes this often (the ML snapshot interval) and starts this long
+    # before the window to build history. The lookback must be a whole number of intervals and
+    # longer than the model's 26-snapshot memory (5.2 s).
+    watch_interval_ns: int = 200_000_000
+    watch_lookback_ns: int = 6 * NS_PER_S
 
     def market_config(self, seed: int) -> MarketConfig:
         """Return the market configuration for ``seed``: it ends when the parent window does."""
@@ -73,13 +78,24 @@ def run_one_seed(
     seed: int,
     config: EvalConfig | None = None,
     engine: EngineFactory | None = None,
+    watching: bool = False,
 ) -> SeedResult:
-    """Run a fresh strategy on the market for ``seed`` and return its implementation shortfall."""
+    """Run a fresh strategy on the market for ``seed`` and return its implementation shortfall.
+
+    ``watching`` strategies wake every ``config.watch_interval_ns`` (see ``EvalConfig``) instead of
+    once per slice.
+    """
     config = config or EvalConfig()
     market_config = config.market_config(seed)
     agents = build_background_agents(market_config)
     parent = config.parent(agent_id=len(agents))  # the next free id
-    agent = StrategyAgent(factory(), parent, config.num_slices)
+    agent = (
+        StrategyAgent(
+            factory(), parent, config.num_slices, config.watch_interval_ns, config.watch_lookback_ns
+        )
+        if watching
+        else StrategyAgent(factory(), parent, config.num_slices)
+    )
     market = Market(market_config, [*agents, agent], book=(engine or default_engine())())
 
     own_fills: list[Fill] = []
@@ -107,9 +123,10 @@ def run_many(
     seeds: Iterable[int],
     config: EvalConfig | None = None,
     engine: EngineFactory | None = None,
+    watching: bool = False,
 ) -> list[SeedResult]:
     """Run ``factory``'s strategy on every seed, in order."""
-    return [run_one_seed(factory, seed, config, engine) for seed in seeds]
+    return [run_one_seed(factory, seed, config, engine, watching) for seed in seeds]
 
 
 def background_trades(
