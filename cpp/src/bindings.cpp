@@ -23,7 +23,8 @@ using FillTuple =
 
 // Raise the Python exception classes from lobx.errors, so callers catch the same types whichever
 // engine they use. The import happens inside the translator, i.e. only when an error occurs.
-void translate_error(std::exception_ptr error) {
+// The parameter is a by-value std::exception_ptr because that is the signature pybind11 requires.
+void translate_error(std::exception_ptr error) {  // NOLINT(performance-unnecessary-value-param)
   try {
     if (error) std::rethrow_exception(error);
   } catch (

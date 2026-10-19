@@ -72,8 +72,7 @@ Qty OrderBook::match(Map& opposite, const Order& order, std::vector<Fill>& fills
   return remaining;
 }
 
-void OrderBook::rest(const Order& order, Qty qty) {
-  const Price price = *order.price;
+void OrderBook::rest(const Order& order, Price price, Qty qty) {
   auto place = [&](auto& side_map) {
     auto [it, inserted] = side_map.try_emplace(price);
     if (inserted) it->second.price = price;
@@ -95,7 +94,10 @@ std::vector<Fill> OrderBook::submit(const Order& order) {
   const Qty remaining =
       order.side == Side::Buy ? match(asks_, order, fills) : match(bids_, order, fills);
   // Only an order with a price can rest. A market order has none, so its remainder vanishes.
-  if (remaining > 0 && order.type == OrderType::Limit) rest(order, remaining);
+  // validate() guaranteed that a limit order carries a price.
+  if (remaining > 0 && order.type == OrderType::Limit) {
+    rest(order, *order.price, remaining);  // NOLINT(bugprone-unchecked-optional-access)
+  }
   last_ts_ = order.ts;
   return fills;
 }

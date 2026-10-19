@@ -24,13 +24,13 @@ class OrderBook {
   bool cancel(OrderId id, Timestamp ts);
 
   // Up to `depth` aggregated levels per side, best first.
-  Snapshot snapshot(std::size_t depth) const;
+  [[nodiscard]] Snapshot snapshot(std::size_t depth) const;
 
-  std::optional<Price> best_bid() const;
-  std::optional<Price> best_ask() const;
+  [[nodiscard]] std::optional<Price> best_bid() const;
+  [[nodiscard]] std::optional<Price> best_ask() const;
 
   // Number of orders currently resting.
-  std::size_t resting_orders() const { return index_.size(); }
+  [[nodiscard]] std::size_t resting_orders() const { return index_.size(); }
 
  private:
   // One order waiting in the book. Its price is the price of the level that holds it.
@@ -50,8 +50,8 @@ class OrderBook {
 
   // std::map nodes never move, so a Level* stays valid until that level is erased (and a level is
   // only erased once it is empty, i.e. when nothing can point at it any more).
-  using BidMap = std::map<Price, Level, std::greater<Price>>;  // best (highest) bid first
-  using AskMap = std::map<Price, Level>;                       // best (lowest) ask first
+  using BidMap = std::map<Price, Level, std::greater<>>;  // best (highest) bid first
+  using AskMap = std::map<Price, Level>;                  // best (lowest) ask first
 
   // Where an order lives, so cancel never has to search.
   struct Locator {
@@ -67,8 +67,8 @@ class OrderBook {
   template <class Map>
   Qty match(Map& opposite, const Order& order, std::vector<Fill>& fills);
 
-  // Place `qty` of `order` in the book behind the earlier orders at its price.
-  void rest(const Order& order, Qty qty);
+  // Place `qty` of `order` in the book at `price`, behind the earlier orders at that price.
+  void rest(const Order& order, Price price, Qty qty);
 
   BidMap bids_;
   AskMap asks_;
