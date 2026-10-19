@@ -42,3 +42,38 @@ def test_cli_eval_prints_a_table_and_writes_a_plot(
 def test_cli_eval_reports_an_unknown_strategy(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["eval", "--strategies", "nope", "--seeds", "3"]) == 1
     assert "unknown strategy" in capsys.readouterr().err
+
+
+def _tiny_model() -> object:
+    import numpy as np
+
+    from lobx.ml.dataset import Dataset
+    from lobx.ml.model import NaiveModel
+
+    model = NaiveModel()
+    y = np.array([0, 1, 2], dtype=np.int64)
+    model.fit(Dataset(np.zeros((3, 1)), y, np.zeros(3, dtype=np.int64)))
+    return model
+
+
+def test_passive_and_adaptive_run_and_complete() -> None:
+    config = EvalConfig(
+        parent_qty=300, start_ns=20 * NS_PER_S, window_ns=60 * NS_PER_S, num_slices=6
+    )
+    results = evaluate(["passive", "adaptive"], 2, config, model=_tiny_model(), threshold=0.5)  # type: ignore[arg-type]
+    for runs in results.values():
+        assert all(r.executed == config.parent_qty for r in runs)
+
+
+def test_adaptive_without_a_model_is_a_clear_error() -> None:
+    with pytest.raises(ValueError, match="needs a fitted model"):
+        evaluate(["adaptive"], 2, SHORT)
+
+
+def test_obtain_model_loads_an_existing_file(tmp_path: Path) -> None:
+    from lobx.eval.runner import obtain_model
+    from lobx.ml.store import save_model
+
+    path = tmp_path / "m.json"
+    save_model(_tiny_model(), path)  # type: ignore[arg-type]
+    assert obtain_model(path) is not None

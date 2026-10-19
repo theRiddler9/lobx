@@ -46,7 +46,7 @@ select = ["E", "F", "I", "B", "UP", "SIM", "N", "D"]
 ignore = ["D203", "D213"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["D", "N806"]
+"tests/**" = ["D", "N803", "N806"]
 # Machine learning code names the feature matrix X, by long convention (scikit-learn, LightGBM).
 "src/lobx/ml/**" = ["N803", "N806"]
 
