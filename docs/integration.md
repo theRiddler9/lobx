@@ -32,6 +32,12 @@ blocking, record it here and ask before working around it.
 | 2026-10-19 | The adaptive strategy wakes every 200 ms from 6 s before the window; baselines still wake once per slice. | Features need evenly spaced snapshots on the training grid; keeping the baselines unchanged keeps Phase 4 numbers reproducible. |
 | 2026-10-19 | `DEFAULT_THRESHOLD = 0.9`, chosen on validation seeds 100..139. | Cheapest of {0.3, 0.5, 0.7, 0.9, 1.0}; a tie with 1.0, at which the model almost never fires (see `docs/results.md`). |
 | 2026-10-19 | A `passive` strategy (model off) is part of the comparison. | Ablation: shows the 37 bps gain over TWAP comes from resting orders, not from the model. |
+| 2026-10-19 | `websockets` (runtime) and `httpx` (dev) added although they are outside the AGENTS.md table. | uvicorn cannot serve WebSocket without `websockets`; FastAPI's `TestClient` needs `httpx`. Asked first; the user approved. |
+| 2026-10-19 | The service stack is an optional extra: `pip install -e ".[service]"`. | The engine, simulator and evaluation install without a web stack. Service tests skip themselves when the extra is missing. |
+| 2026-10-19 | `run_detailed` and an `observer` hook added to the eval harness; `verdict` split out of `comparison_table`. | The service needs a run's fills, a recording of the book, and the same verdict wording; both are behaviour-preserving (tested). |
+| 2026-10-19 | The WebSocket streams a *recorded* run, paced by `delay_ms`, not a market computed at wall-clock speed. | A run simulates in about a second; pacing the replay makes the book watchable. The data are exactly the run's snapshots (one per simulated second, 10 levels). |
+| 2026-10-19 | The service never trains a model; adaptive without `models/lightgbm.json` is a 409. | Training takes minutes; a request should not silently block on it. The Docker image trains at build time. |
+| 2026-10-19 | The Docker image was not built in the sandbox (Docker Hub unreachable). | The same steps were replayed in a clean venv (install, train, serve, dashboard health). First real build still to be done on a machine with network access. |
 
 ## Blockers
 
