@@ -4,8 +4,9 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
+#include <iomanip>
+#include <iostream>
 #include <vector>
 
 #include "lobx/order_book.hpp"
@@ -78,9 +79,10 @@ int main(int argc, char** argv) {
   const double seconds = std::chrono::duration<double>(clock::now() - start).count();
 
   std::sort(latencies.begin(), latencies.end());
-  std::printf("ops=%zu fills=%zu\n", count, fills);
-  std::printf("throughput: %.0f ops/s\n", static_cast<double>(count) / seconds);
-  std::printf("median latency: %lld ns\n", static_cast<long long>(latencies[count / 2]));
-  std::printf("p99 latency: %lld ns\n", static_cast<long long>(latencies[count * 99 / 100]));
+  std::cout << "ops=" << count << " fills=" << fills << "\n"
+            << std::fixed << std::setprecision(0)
+            << "throughput: " << static_cast<double>(count) / seconds << " ops/s\n"
+            << "median latency: " << latencies[count / 2] << " ns\n"
+            << "p99 latency: " << latencies[count * 99 / 100] << " ns\n";
   return 0;
 }

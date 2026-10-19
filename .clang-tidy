@@ -1,0 +1,20 @@
+# Run: cmake -S . -B build/tidy -DLOBX_BUILD_TESTS=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+#      clang-tidy -p build/tidy cpp/src/order_book.cpp cpp/bench/bench_order_book.cpp
+# (bindings.cpp needs the Python and pybind11 include paths; the unit tests are excluded because
+# their CHECK macro triggers do-while and DeMorgan warnings that are noise, not findings.)
+Checks: >
+  bugprone-*,performance-*,modernize-*,readability-*,cppcoreguidelines-*,
+  -modernize-use-trailing-return-type,
+  -readability-magic-numbers,-cppcoreguidelines-avoid-magic-numbers,
+  -readability-identifier-length,
+  -readability-braces-around-statements,
+  -cppcoreguidelines-pro-bounds-*,
+  -cppcoreguidelines-pro-type-member-init,
+  -performance-enum-size,
+  -bugprone-easily-swappable-parameters
+# Disabled on purpose: the structs are aggregates always built with braces; Side and OrderType keep
+# the int values the Python bindings pass; and the swappable-parameter check wants strong types for
+# every integer alias (OrderId, Price, Qty, Timestamp), which is more machinery than this engine
+# needs (the differential test would catch a swapped call).
+WarningsAsErrors: ''
+HeaderFilterRegex: 'cpp/include/.*'
