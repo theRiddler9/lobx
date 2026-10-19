@@ -17,26 +17,48 @@ class StrategyAgent:
     against it.
     """
 
-    def __init__(self, strategy: ExecutionStrategy, parent: ParentOrder, num_slices: int) -> None:
-        """Wrap ``strategy`` to work ``parent`` in ``num_slices`` evenly spaced wakes."""
+    def __init__(
+        self,
+        strategy: ExecutionStrategy,
+        parent: ParentOrder,
+        num_slices: int,
+        wake_interval_ns: int | None = None,
+        lookback_ns: int = 0,
+    ) -> None:
+        """Wrap ``strategy`` to work ``parent``.
+
+        By default the agent wakes once per slice (``num_slices`` evenly spaced wakes). A strategy
+        that must watch the market continuously passes ``wake_interval_ns`` to wake that often
+        instead, starting ``lookback_ns`` *before* the window so it can build up history; it is
+        trusted to send nothing before ``parent.start_ns``.
+        """
         if num_slices <= 0:
             raise ValueError(f"num_slices must be greater than 0, got {num_slices}")
+        if wake_interval_ns is not None and wake_interval_ns <= 0:
+            raise ValueError(f"wake_interval_ns must be greater than 0, got {wake_interval_ns}")
+        if lookback_ns < 0:
+            raise ValueError(f"lookback_ns must not be negative, got {lookback_ns}")
         self.agent_id = parent.agent_id
         self.parent = parent
         self.arrival_mid2: int | None = None
         self._strategy = strategy
-        self._interval = (parent.end_ns - parent.start_ns) // num_slices
+        self._lookback = lookback_ns if wake_interval_ns is not None else 0
+        self._interval = (
+            wake_interval_ns
+            if wake_interval_ns is not None
+            else (parent.end_ns - parent.start_ns) // num_slices
+        )
         if self._interval <= 0:
             raise ValueError("the parent window is too short for that many slices")
         strategy.reset(parent)
 
     def first_wake(self, rng: Generator) -> int:
-        """Return the start of the parent window."""
-        return self.parent.start_ns
+        """Return the start of the parent window (earlier by the lookback, if any)."""
+        return max(0, self.parent.start_ns - self._lookback)
 
     def wake(self, ts: int, view: MarketView, rng: Generator) -> list[Action]:
         """Record the arrival price on the first wake, then return the strategy's child orders."""
-        if self.arrival_mid2 is None:
+        if self.arrival_mid2 is None and ts >= self.parent.start_ns:
             mid2 = view.mid2()
             self.arrival_mid2 = mid2 if mid2 is not None else 2 * view.reference_price()
         return self._strategy.step(ts, view)

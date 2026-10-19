@@ -44,19 +44,29 @@ class ScheduledStrategy:
         targets[-1] = parent.qty
         self._targets = tuple(targets)
 
+    def target_at(self, ts: int) -> int:
+        """Return how many shares should be done by the end of the slice that contains ``ts``.
+
+        Before the parent window starts this is 0; from the last slice onwards it is the whole
+        parent quantity.
+        """
+        parent = self._parent
+        if parent is None:
+            raise RuntimeError("call reset(parent) before target_at()")
+        if ts < parent.start_ns:
+            return 0
+        slice_ns = (parent.end_ns - parent.start_ns) // self.num_slices
+        return self._targets[min((ts - parent.start_ns) // slice_ns, self.num_slices - 1)]
+
     def step(self, ts: int, view: MarketView) -> list[Action]:
         """Return a market order for whatever is behind schedule at time ``ts``."""
         parent = self._parent
         if parent is None:
             raise RuntimeError("call reset(parent) before step()")
-        if ts < parent.start_ns:
-            return []
-        slice_ns = (parent.end_ns - parent.start_ns) // self.num_slices
-        index = min((ts - parent.start_ns) // slice_ns, self.num_slices - 1)
         # Comparing with what has *actually* traded (not with what we sent) means a shortfall from
         # a thin book is carried into the next slice, and calling step twice in one slice is
         # harmless: the second call finds nothing behind schedule.
-        behind = self._targets[index] - parent.executed(view)
+        behind = self.target_at(ts) - parent.executed(view)
         if behind <= 0:
             return []
         return [Submit.market(parent.side, behind)]
