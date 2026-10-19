@@ -41,6 +41,7 @@ blocking, record it here and ask before working around it.
 | 2026-10-19 | `LOBX_SANITIZE` CMake option, a `lobx_stress` ctest, `.clang-tidy`, a CI sanitizer job. | Phase 8 hardening; sanitizers found nothing, clang-tidy led to small clean-ups (see `docs/results.md`). |
 | 2026-10-19 | LICENSE is MIT with the holder "LOBX contributors". | AGENTS.md requires a LICENSE but names none; the holder should be replaced with the owner's name. |
 | 2026-10-19 | Optional Phase 9 (RL) not started. | AGENTS.md says only after Phase 8; it is on the cut line. |
+| 2026-10-19 | `brew install libomp` added to macOS CI runner. | LightGBM requires OpenMP runtime (`libomp.dylib`), which is not bundled by default on macOS GitHub Actions runners. |
 
 ## Blockers
 
