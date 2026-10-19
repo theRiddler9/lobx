@@ -23,11 +23,19 @@ from lobx.engine.native import NativeOrderBook
 from lobx.engine.protocol import OrderBook
 from lobx.engine.replay import replay
 from lobx.errors import LobxError
+from lobx.eval.compare import comparison_table
 from lobx.eval.harness import default_engine
 from lobx.eval.report import plot_results, results_table
-from lobx.eval.runner import STRATEGY_NAMES, evaluate
+from lobx.eval.runner import (
+    DEFAULT_MODEL_PATH,
+    DEFAULT_THRESHOLD,
+    STRATEGY_NAMES,
+    evaluate,
+    obtain_model,
+)
 from lobx.eval.seeds import TEST_SEEDS, TRAIN_SEEDS, VALIDATION_SEEDS
-from lobx.ml.store import save_model
+from lobx.eval.tuning import tune_threshold, tuning_table
+from lobx.ml.store import load_model, save_model
 from lobx.ml.train import evaluation_table, score_models, train_models
 from lobx.sim.clock import NS_PER_S
 from lobx.sim.market import Market
@@ -66,10 +74,14 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
 def _cmd_eval(args: argparse.Namespace) -> int:
     names = [name.strip() for name in args.strategies.split(",") if name.strip()]
-    results = evaluate(names, args.seeds)
+    model = obtain_model(args.model, default_engine()) if "adaptive" in names else None
+    results = evaluate(names, args.seeds, model=model, threshold=args.threshold)
     first = TEST_SEEDS.start
     print(f"test seeds {first}..{first + args.seeds - 1} (simulated market; lower is better)")
     print(results_table(results))
+    if len(results) > 1:
+        print("\npaired by seed (a - b; negative means a is cheaper):")
+        print(comparison_table(results))
     if args.plot is not None:
         plot_results(results, args.plot)
         print(f"plot: {args.plot}")
@@ -91,6 +103,16 @@ def _cmd_train(args: argparse.Namespace) -> int:
         for name, model in models.by_name().items():
             save_model(model, args.out / f"{name}.json")
         print(f"models saved in {args.out}/")
+    return 0
+
+
+def _cmd_tune(args: argparse.Namespace) -> int:
+    model = load_model(args.model)
+    thresholds = [float(t) for t in args.thresholds.split(",")]
+    seeds = VALIDATION_SEEDS[: args.seeds]
+    rows = tune_threshold(model, thresholds, seeds, engine=default_engine())
+    print(f"validation seeds {seeds.start}..{seeds.stop - 1}; adaptive minus TWAP, paired by seed")
+    print(tuning_table(rows))
     return 0
 
 
@@ -147,6 +169,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     train_parser.set_defaults(handler=_cmd_train)
 
+    tune_parser = commands.add_parser(
+        "tune", help="pick the adaptive threshold on validation seeds (never test seeds)"
+    )
+    tune_parser.add_argument("--model", type=Path, default=Path("models/lightgbm.json"))
+    tune_parser.add_argument("--thresholds", default="0.3,0.5,0.7,0.9,1.0")
+    tune_parser.add_argument("--seeds", type=int, default=40, help="validation seeds (default: 40)")
+    tune_parser.set_defaults(handler=_cmd_tune)
+
     evaluate_parser = commands.add_parser(
         "eval", help="compare execution strategies on held-out seeds"
     )
@@ -157,6 +187,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     evaluate_parser.add_argument(
         "--seeds", type=int, default=200, help="number of test seeds (default: 200)"
+    )
+    evaluate_parser.add_argument(
+        "--model", type=Path, default=DEFAULT_MODEL_PATH, help="LightGBM model (trained if absent)"
+    )
+    evaluate_parser.add_argument(
+        "--threshold", type=float, default=DEFAULT_THRESHOLD, help="adaptive threshold"
     )
     evaluate_parser.add_argument(
         "--plot", type=Path, default=None, help="also write a PNG of the results here"
