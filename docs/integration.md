@@ -28,6 +28,10 @@ blocking, record it here and ask before working around it.
 | 2026-10-18 | Snapshots for ML are taken by a `SnapshotRecorder` agent every 200 ms and re-stamped with the wake time. | The engine stamps a snapshot with the last order time; features need evenly spaced times. |
 | 2026-10-18 | The model predicts down/flat/up of the mid over 1 s (5 snapshots); LightGBM and logistic are saved as JSON, `models/` is git-ignored. | Readable files that cannot run code; models are regenerated with `lobx train` (about 2 minutes). |
 | 2026-10-18 | Feature `trade_flow_*` needs a recent-trades feed that `MarketView` does not expose. | Open for Phase 6: either add recent trades to `MarketView` (a contract change on its own branch) or drop the flow features for the live strategy. |
+| 2026-10-19 | `MarketView.fills_after(ts)` added (own `contract/market-view-fills` branch, merged first). | Resolves the Phase 5 open item: the adaptive strategy sees the public trade tape, so it can compute the trade-flow features the model was trained on. |
+| 2026-10-19 | The adaptive strategy wakes every 200 ms from 6 s before the window; baselines still wake once per slice. | Features need evenly spaced snapshots on the training grid; keeping the baselines unchanged keeps Phase 4 numbers reproducible. |
+| 2026-10-19 | `DEFAULT_THRESHOLD = 0.9`, chosen on validation seeds 100..139. | Cheapest of {0.3, 0.5, 0.7, 0.9, 1.0}; a tie with 1.0, at which the model almost never fires (see `docs/results.md`). |
+| 2026-10-19 | A `passive` strategy (model off) is part of the comparison. | Ablation: shows the 37 bps gain over TWAP comes from resting orders, not from the model. |
 
 ## Blockers
 
