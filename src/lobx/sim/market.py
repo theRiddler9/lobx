@@ -14,6 +14,7 @@ resting orders belong to whom.
 from __future__ import annotations
 
 import logging
+from bisect import bisect_right
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -106,6 +107,9 @@ class Market:
         self._positions: dict[int, int] = dict.fromkeys(self._agents, 0)
         self._peak_abs_position: dict[int, int] = dict.fromkeys(self._agents, 0)
         self._last_trade: int | None = None
+        # The public trade tape, in time order, with its timestamps kept apart so bisect can search.
+        self._tape: list[Fill] = []
+        self._tape_ts: list[int] = []
         self._trades = 0
         self._self_trades = 0
         self._next_order_id = 1
@@ -154,6 +158,10 @@ class Market:
     def open_orders(self, agent_id: int) -> tuple[int, ...]:
         """Return the ids of ``agent_id``'s resting orders, oldest first."""
         return self.book.tracker.open_order_ids(agent_id)
+
+    def fills_after(self, ts: int) -> tuple[Fill, ...]:
+        """Return every trade with timestamp strictly greater than ``ts``, in time order."""
+        return tuple(self._tape[bisect_right(self._tape_ts, ts) :])
 
     # ------------------------------------------------------------------------------ the loop
 
@@ -249,6 +257,8 @@ class Market:
         self._move_position(buyer, fill.qty)
         self._move_position(seller, -fill.qty)
         self._last_trade = fill.price
+        self._tape.append(fill)
+        self._tape_ts.append(fill.ts)
         self._trades += 1
         if buyer == seller:
             self._self_trades += 1

@@ -12,7 +12,7 @@ from typing import Protocol, runtime_checkable
 from numpy.random import Generator
 
 from lobx.sim.actions import Action
-from lobx.types import BookSnapshot
+from lobx.types import BookSnapshot, Fill
 
 
 class MarketView(Protocol):
@@ -61,6 +61,14 @@ class MarketView(Protocol):
 
     def open_orders(self, agent_id: int) -> tuple[int, ...]:
         """Return the ids of ``agent_id``'s resting orders, oldest first."""
+        ...
+
+    def fills_after(self, ts: int) -> tuple[Fill, ...]:
+        """Return every trade with timestamp strictly greater than ``ts``, in time order.
+
+        A real participant sees the public trade tape; this is that tape. It only ever contains
+        trades that have already happened.
+        """
         ...
 
 

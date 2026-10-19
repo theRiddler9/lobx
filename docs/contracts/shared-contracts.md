@@ -173,7 +173,9 @@ class Agent(Protocol):
 Read-only. `ts`, `best_bid()`, `best_ask()`, `mid2()` (twice the mid-price, an integer),
 `last_trade_price()`, `reference_price()` (mid, else last trade, else the opening price; always
 defined), `snapshot(depth)`, `position(agent_id)` (signed shares), and `open_orders(agent_id)`
-(resting order ids, oldest first).
+(resting order ids, oldest first), and `fills_after(ts)` (the public trade tape: every trade with
+timestamp strictly after `ts`, in time order; added in Phase 6 so strategies can compute the same
+trade-flow features the model was trained on).
 
 ### Randomness
 
