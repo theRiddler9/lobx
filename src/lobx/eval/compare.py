@@ -53,6 +53,19 @@ def paired_comparison(
     )
 
 
+def verdict(c: PairedComparison) -> str:
+    """Say which strategy is cheaper, or that the data cannot tell, from the interval's position.
+
+    ``difference`` is a - b. If its whole 95% interval is below zero, a is cheaper; if it is all
+    above zero, b is. An interval that contains zero means the data cannot separate them.
+    """
+    if c.difference.ci_high < 0:
+        return f"{c.a} cheaper"
+    if c.difference.ci_low > 0:
+        return f"{c.b} cheaper"
+    return "no clear difference"
+
+
 def comparison_table(results: Mapping[str, Sequence[SeedResult]]) -> str:
     """Return a markdown table comparing every strategy with each one listed before it."""
     lines = [
@@ -62,14 +75,8 @@ def comparison_table(results: Mapping[str, Sequence[SeedResult]]) -> str:
     for b_name, a_name in combinations(results, 2):
         c = paired_comparison(a_name, results[a_name], b_name, results[b_name])
         d = c.difference
-        if d.ci_high < 0:
-            verdict = f"{a_name} cheaper"
-        elif d.ci_low > 0:
-            verdict = f"{b_name} cheaper"
-        else:
-            verdict = "no clear difference"
         lines.append(
             f"| {a_name} - {b_name} | {c.used} | {d.mean:.2f} | [{d.ci_low:.2f}, {d.ci_high:.2f}] "
-            f"| {c.a_cheaper / c.used:.0%} of seeds | {verdict} |"
+            f"| {c.a_cheaper / c.used:.0%} of seeds | {verdict(c)} |"
         )
     return "\n".join(lines)
