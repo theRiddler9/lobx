@@ -38,6 +38,9 @@ blocking, record it here and ask before working around it.
 | 2026-10-19 | The WebSocket streams a *recorded* run, paced by `delay_ms`, not a market computed at wall-clock speed. | A run simulates in about a second; pacing the replay makes the book watchable. The data are exactly the run's snapshots (one per simulated second, 10 levels). |
 | 2026-10-19 | The service never trains a model; adaptive without `models/lightgbm.json` is a 409. | Training takes minutes; a request should not silently block on it. The Docker image trains at build time. |
 | 2026-10-19 | The Docker image was not built in the sandbox (Docker Hub unreachable). | The same steps were replayed in a clean venv (install, train, serve, dashboard health). First real build still to be done on a machine with network access. |
+| 2026-10-19 | `LOBX_SANITIZE` CMake option, a `lobx_stress` ctest, `.clang-tidy`, a CI sanitizer job. | Phase 8 hardening; sanitizers found nothing, clang-tidy led to small clean-ups (see `docs/results.md`). |
+| 2026-10-19 | LICENSE is MIT with the holder "LOBX contributors". | AGENTS.md requires a LICENSE but names none; the holder should be replaced with the owner's name. |
+| 2026-10-19 | Optional Phase 9 (RL) not started. | AGENTS.md says only after Phase 8; it is on the cut line. |
 
 ## Blockers
 

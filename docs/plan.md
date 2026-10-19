@@ -32,7 +32,7 @@ criteria hold, its `docs/learn/phase-N.md` exists, and the tag is created.
 - [x] Phase 5: ML level 1, order-flow predictor (tag `phase-5-ml`)
 - [x] Phase 6: ML level 2, adaptive execution (tag `phase-6-adaptive`)
 - [x] Phase 7: service layer (tag `phase-7-service`)
-- [ ] Phase 8: hardening and release (tag `phase-8-release`)
+- [x] Phase 8: hardening and release (tag `phase-8-release`)
 - [ ] Optional Phase 9: RL (stretch, only after Phase 8)
 
 ## Cut line (if time runs short)
