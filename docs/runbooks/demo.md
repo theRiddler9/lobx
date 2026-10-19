@@ -27,8 +27,10 @@ uv sync
    results table with mean shortfall in bps and 95% confidence intervals. [Phase 4 and 6]
 6. **Leakage test.** The leakage test fails when a lookahead bug is injected and passes on the real
    pipeline. [Phase 4]
-7. **Service.** `docker compose up` serves the API and the dashboard, which shows a live book and a
-   strategy comparison. [Phase 7]
+7. **Service.** `docker compose up` serves the API (http://localhost:8000/docs) and the dashboard
+   (http://localhost:8501), which shows a live book and a strategy comparison. Without Docker:
+   `pip install -e ".[service]"`, then `python -m lobx.cli serve` and, in a second terminal,
+   `streamlit run dashboard/app.py`. [Phase 7]
 8. **README.** It has the results table, an architecture diagram, a Limitations section, and a
    "What failed" section. [Phase 8]
 

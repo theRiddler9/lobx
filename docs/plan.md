@@ -31,7 +31,7 @@ criteria hold, its `docs/learn/phase-N.md` exists, and the tag is created.
 - [x] Phase 4: baselines and evaluation harness (tag `phase-4-eval`)
 - [x] Phase 5: ML level 1, order-flow predictor (tag `phase-5-ml`)
 - [x] Phase 6: ML level 2, adaptive execution (tag `phase-6-adaptive`)
-- [ ] Phase 7: service layer (tag `phase-7-service`)
+- [x] Phase 7: service layer (tag `phase-7-service`)
 - [ ] Phase 8: hardening and release (tag `phase-8-release`)
 - [ ] Optional Phase 9: RL (stretch, only after Phase 8)
 
@@ -55,4 +55,4 @@ Record blockers and cross-component decisions in `docs/integration.md`.
 | Engine (C++) | done, differential-tested against Python | Phase 3 |
 | Strategies and evaluation | TWAP, VWAP, passive, adaptive, harness, paired comparison, leakage test done | Phase 4 |
 | ML | features, labels, naive/logistic/LightGBM, evaluation done; used by Phase 6 | Phase 5 |
-| Service | not started | Phase 7 |
+| Service | API, WebSocket, dashboard, Docker files done (image not built in the sandbox) | Phase 7 |
