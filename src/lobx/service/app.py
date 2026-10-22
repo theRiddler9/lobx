@@ -71,8 +71,9 @@ def create_app(
                 detail=f"no trained model at {model_path}; run `python -m lobx.cli train` first",
             )
         job = store.add_run(request)
+        accepted = job.info()
         pool.submit(execution.run, job)
-        return job.info()
+        return accepted
 
     @app.get("/runs/{run_id}")
     def get_run(run_id: str) -> RunInfo:
@@ -106,8 +107,9 @@ def create_app(
                 detail=f"no trained model at {model_path}; run `python -m lobx.cli train` first",
             )
         job = store.add_comparison(request)
+        accepted = job.info()
         pool.submit(execution.compare, job)
-        return job.info()
+        return accepted
 
     @app.get("/comparisons/{comparison_id}")
     def get_comparison(comparison_id: str) -> ComparisonInfo:
