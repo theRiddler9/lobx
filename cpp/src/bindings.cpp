@@ -12,6 +12,7 @@
 #include "lobx/features.hpp"
 #include "lobx/gateway.hpp"
 #include "lobx/order_book.hpp"
+#include "lobx/sim_engine.hpp"
 
 namespace py = pybind11;
 
@@ -186,4 +187,25 @@ PYBIND11_MODULE(_native, m) {
         return out;
       },
       py::arg("snapshots"), py::arg("fills"));
+
+  py::class_<lobx::SimConfig>(m, "NativeSimConfig")
+      .def(py::init<>())
+      .def_readwrite("seed", &lobx::SimConfig::seed)
+      .def_readwrite("duration_ns", &lobx::SimConfig::duration_ns)
+      .def_readwrite("initial_price", &lobx::SimConfig::initial_price)
+      .def_readwrite("trade_size", &lobx::SimConfig::trade_size)
+      .def_readwrite("num_noise_agents", &lobx::SimConfig::num_noise_agents)
+      .def_readwrite("noise_lambda", &lobx::SimConfig::noise_lambda)
+      .def_readwrite("mm_half_spread", &lobx::SimConfig::mm_half_spread)
+      .def_readwrite("mm_skew_per_qty", &lobx::SimConfig::mm_skew_per_qty);
+
+  py::class_<lobx::CppMarket>(m, "NativeMarket")
+      .def(py::init<lobx::SimConfig>(), py::arg("config"))
+      .def("run", &lobx::CppMarket::run, py::call_guard<py::gil_scoped_release>())
+      .def("step", &lobx::CppMarket::step, py::call_guard<py::gil_scoped_release>())
+      .def("current_time", &lobx::CppMarket::current_time)
+      .def("total_orders_submitted", &lobx::CppMarket::total_orders_submitted)
+      .def("trades_count", [](const lobx::CppMarket& self) { return self.trades().size(); })
+      .def("best_bid", [](const lobx::CppMarket& self) { return self.book().best_bid(); })
+      .def("best_ask", [](const lobx::CppMarket& self) { return self.book().best_ask(); });
 }
