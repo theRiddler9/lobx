@@ -20,7 +20,7 @@ using Qty = std::int64_t;
 using Timestamp = std::int64_t;  // nanoseconds since simulation start
 
 enum class Side : int { Buy = 0, Sell = 1 };
-enum class OrderType : int { Limit = 0, Market = 1 };
+enum class OrderType : int { Limit = 0, Market = 1, IOC = 2, FOK = 3, PostOnly = 4 };
 
 // An instruction to the engine. `price` is empty for market orders.
 struct Order {

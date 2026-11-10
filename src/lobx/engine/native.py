@@ -50,13 +50,21 @@ class NativeOrderBook:
             )
         self._book: NativeBook = _native.NativeBook()
 
+    _TYPE_MAP = {
+        OrderType.LIMIT: 0,
+        OrderType.MARKET: 1,
+        OrderType.IOC: 2,
+        OrderType.FOK: 3,
+        OrderType.POST_ONLY: 4,
+    }
+
     def submit(self, order: Order) -> list[Fill]:
         """Apply ``order`` and return the fills it produced, in execution order."""
         raw = self._book.submit(
             order.order_id,
             order.agent_id,
             0 if order.side is Side.BUY else 1,
-            0 if order.type is OrderType.LIMIT else 1,
+            self._TYPE_MAP.get(order.type, 0),
             order.price,
             order.qty,
             order.ts,

@@ -43,7 +43,7 @@ std::vector<FillTuple> submit_order_helper(BookType& book, std::int64_t id, std:
   const lobx::Order order{id,
                           agent,
                           side == 0 ? lobx::Side::Buy : lobx::Side::Sell,
-                          type == 0 ? lobx::OrderType::Limit : lobx::OrderType::Market,
+                          static_cast<lobx::OrderType>(type),
                           price,
                           qty,
                           ts};
@@ -64,7 +64,7 @@ std::vector<FillTuple> submit_many_helper(BookType& book, const std::vector<Orde
   for (const auto& [id, agent, side, type, price, qty, ts] : py_orders) {
     orders.push_back(lobx::Order{
         id, agent, side == 0 ? lobx::Side::Buy : lobx::Side::Sell,
-        type == 0 ? lobx::OrderType::Limit : lobx::OrderType::Market, price, qty, ts});
+        static_cast<lobx::OrderType>(type), price, qty, ts});
   }
   const std::vector<lobx::Fill> fills = book.submit_many(orders);
   std::vector<FillTuple> out;
@@ -161,7 +161,7 @@ PYBIND11_MODULE(_native, m) {
 
   m.def(
       "extract_features",
-      [](const std::vector<std::tuple<Timestamp, std::vector<lobx::PriceLevel>,
+      [](const std::vector<std::tuple<lobx::Timestamp, std::vector<lobx::PriceLevel>,
                                       std::vector<lobx::PriceLevel>>>& py_snaps,
          const std::vector<FillTuple>& py_fills) {
         std::vector<lobx::Snapshot> snaps;

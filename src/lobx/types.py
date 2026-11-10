@@ -30,10 +30,16 @@ class OrderType(Enum):
 
     A ``LIMIT`` order has a price and may rest in the book. A ``MARKET`` order has no price and
     never rests: whatever it cannot fill immediately is discarded.
+    ``IOC`` (Immediate-Or-Cancel) fills whatever is immediately available, discarding remainder.
+    ``FOK`` (Fill-Or-Kill) fills the entire quantity immediately or cancels completely.
+    ``POST_ONLY`` only rests passively; rejected if it would cross and take liquidity.
     """
 
     LIMIT = "LIMIT"
     MARKET = "MARKET"
+    IOC = "IOC"
+    FOK = "FOK"
+    POST_ONLY = "POST_ONLY"
 
 
 @dataclass(frozen=True, slots=True)

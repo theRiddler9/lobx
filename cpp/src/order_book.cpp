@@ -16,6 +16,17 @@ bool crosses(const Order& order, Price level_price) {
   return order.side == Side::Buy ? level_price <= limit : level_price >= limit;
 }
 
+template <class Map>
+bool can_fill_all(const Map& opposite, const Order& order) {
+  Qty accum = 0;
+  for (const auto& [px, level] : opposite) {
+    if (!crosses(order, px)) break;
+    accum += level.total;
+    if (accum >= order.qty) return true;
+  }
+  return false;
+}
+
 }  // namespace
 
 void OrderBook::check_ts(Timestamp ts) const {
@@ -91,10 +102,29 @@ void OrderBook::rest(const Order& order, Price price, Qty qty) {
 std::vector<Fill> OrderBook::submit(const Order& order) {
   validate(order);
   std::vector<Fill> fills;
+  if (order.type == OrderType::PostOnly) {
+    const bool would_cross = (order.side == Side::Buy)
+                                 ? (!asks_.empty() && crosses(order, asks_.begin()->first))
+                                 : (!bids_.empty() && crosses(order, bids_.begin()->first));
+    if (would_cross) {
+      last_ts_ = order.ts;
+      return fills;
+    }
+    rest(order, *order.price, order.qty);
+    last_ts_ = order.ts;
+    return fills;
+  }
+  if (order.type == OrderType::FOK) {
+    const bool can_fill = (order.side == Side::Buy) ? can_fill_all(asks_, order)
+                                                    : can_fill_all(bids_, order);
+    if (!can_fill) {
+      last_ts_ = order.ts;
+      return fills;
+    }
+  }
   const Qty remaining =
       order.side == Side::Buy ? match(asks_, order, fills) : match(bids_, order, fills);
-  // Only an order with a price can rest. A market order has none, so its remainder vanishes.
-  // validate() guaranteed that a limit order carries a price.
+  // Only a standard limit order rests unfilled remainder in the book.
   if (remaining > 0 && order.type == OrderType::Limit) {
     rest(order, *order.price, remaining);  // NOLINT(bugprone-unchecked-optional-access)
   }
