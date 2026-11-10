@@ -102,6 +102,17 @@ std::vector<Fill> OrderBook::submit(const Order& order) {
   return fills;
 }
 
+std::vector<Fill> OrderBook::submit_many(const std::vector<Order>& orders) {
+  std::vector<Fill> all_fills;
+  all_fills.reserve(orders.size() / 2);
+  for (const auto& o : orders) {
+    auto fills = submit(o);
+    all_fills.insert(all_fills.end(), std::make_move_iterator(fills.begin()),
+                     std::make_move_iterator(fills.end()));
+  }
+  return all_fills;
+}
+
 bool OrderBook::cancel(OrderId id, Timestamp ts) {
   check_ts(ts);
   last_ts_ = ts;

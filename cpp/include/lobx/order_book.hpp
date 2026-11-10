@@ -20,6 +20,9 @@ class OrderBook {
   // Throws InvalidOrderError or DuplicateOrderIdError before touching the book.
   std::vector<Fill> submit(const Order& order);
 
+  // Apply a batch of orders in one call for maximized throughput and cache locality.
+  std::vector<Fill> submit_many(const std::vector<Order>& orders);
+
   // Remove a resting order. Returns true if it was resting, false otherwise.
   bool cancel(OrderId id, Timestamp ts);
 

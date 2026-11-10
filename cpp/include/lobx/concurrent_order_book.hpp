@@ -22,6 +22,7 @@ class ConcurrentOrderBook {
 
   // Exclusive lock for mutating operations
   std::vector<Fill> submit(const Order& order);
+  std::vector<Fill> submit_many(const std::vector<Order>& orders);
   bool cancel(OrderId id, Timestamp ts);
 
   // Shared lock for concurrent read-only queries

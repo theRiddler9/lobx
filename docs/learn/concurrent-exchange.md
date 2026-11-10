@@ -124,7 +124,30 @@ uint64_t seq = next_seq_.fetch_add(1, std::memory_order_relaxed);
 
 ---
 
-## 4. Benchmark Performance
+## 4. Advanced High-Frequency C++ Engine Patterns
+
+The repository also includes four low-latency C++ components designed for maximum performance:
+
+### A. Vectorized Feature Extraction Engine (`cpp/include/lobx/features.hpp`)
+* **Why**: Flamegraphs showed that Python feature extraction took **26%** of total evaluation runtime.
+* **How**: Precomputes prefix sums for trades to calculate trade-flow imbalance in $O(\log M)$ using binary search (`std::upper_bound`). Vectorized snapshot depth traversal calculates spread, imbalance at depth 1 and 5, and rolling mid returns in a single contiguous memory pass.
+
+### B. Zero-Allocation Slab Memory Pool (`cpp/include/lobx/memory_pool.hpp` & `slab_order_book.hpp`)
+* **Why**: Standard `std::list` performs dynamic heap allocation (`new` / `malloc`) on every order insert and cancel, leading to memory fragmentation and non-deterministic latency spikes.
+* **How**: `FixedPool<T, Capacity>` pre-allocates an intrusive freelist buffer. `SlabOrderBook` uses intrusive doubly-linked list pointers (`prev`, `next`) inside each resting order node. **Zero dynamic heap allocations** occur in the critical matching path.
+
+### C. Lock-Free SPSC Ring Buffer with Cache-Line Padding (`cpp/include/lobx/spsc_ring_buffer.hpp`)
+* **Why**: Mutexes cause OS thread context switches costing 1,000–3,000 ns.
+* **How**: A lock-free single-producer single-consumer circular queue using `std::atomic<uint64_t>` with `memory_order_acquire` and `memory_order_release`.
+* **Eliminating False Sharing**: Both `head_` and `tail_` are decorated with `alignas(64)` to place them on separate CPU L1/L2 cache lines, preventing cache invalidation across cores. Bitwise masking (`head & (Capacity - 1)`) executes in 1 clock cycle.
+
+### D. Vectorized Batch Submission (`submit_many`)
+* **Why**: Crossing the Python/C++ pybind11 boundary order-by-order introduces function call overhead.
+* **How**: `OrderBook::submit_many` and `ConcurrentOrderBook::submit_many` process vectors of orders in one call. In `ConcurrentOrderBook`, the mutex is acquired once for the entire batch.
+
+---
+
+## 5. Benchmark Performance
 
 Run the multi-threaded benchmark:
 ```bash
@@ -138,11 +161,13 @@ On a standard multi-core CPU:
 
 ---
 
-## 5. Practice Exercises
+## 6. Practice Exercises
 
 1. **Implement Order Rejection on Duplicate ID in the Gateway**:
    Catch duplicate order IDs in `ExchangeGateway::run_worker()` and verify that a `GatewayEventType::Rejected` event is emitted on the egress queue without crashing the worker thread.
 2. **Add a Ring-Buffer Subscriber**:
-   Replace `egress_queue_` with a fixed-size lock-free circular ring buffer with an atomic cursor where multiple consumer threads can read without mutual exclusion.
-3. **Batch Barrier Waiting**:
-   Add a method `wait_all_drained(timeout)` that waits until the ingress queue is completely empty and all pending requests have been matched.
+   Replace `egress_queue_` with a fixed-size lock-free `SpscRingBuffer` where consumer threads can read market data without mutual exclusion.
+3. **Compare Slab Allocator vs. Standard Engine Latency**:
+   Write a microbenchmark comparing `OrderBook` and `SlabOrderBook` on 1,000,000 orders to measure the allocation overhead of `std::list`.
+4. **Batch Feature Extraction**:
+   Use `extract_features` from Python via `_native.extract_features` and compare its runtime against `src/lobx/ml/features.py`.

@@ -19,6 +19,8 @@ namespace {
 
 using FillTuple =
     std::tuple<std::int64_t, std::int64_t, int, std::int64_t, std::int64_t, std::int64_t>;
+using OrderTuple =
+    std::tuple<std::int64_t, std::int64_t, int, int, std::optional<std::int64_t>, std::int64_t, std::int64_t>;
 using EventTuple =
     std::tuple<uint64_t, int, std::int64_t, std::int64_t, std::int64_t, std::int64_t, std::int64_t, bool>;
 
@@ -55,6 +57,25 @@ std::vector<FillTuple> submit_order_helper(BookType& book, std::int64_t id, std:
   return out;
 }
 
+template <typename BookType>
+std::vector<FillTuple> submit_many_helper(BookType& book, const std::vector<OrderTuple>& py_orders) {
+  std::vector<lobx::Order> orders;
+  orders.reserve(py_orders.size());
+  for (const auto& [id, agent, side, type, price, qty, ts] : py_orders) {
+    orders.push_back(lobx::Order{
+        id, agent, side == 0 ? lobx::Side::Buy : lobx::Side::Sell,
+        type == 0 ? lobx::OrderType::Limit : lobx::OrderType::Market, price, qty, ts});
+  }
+  const std::vector<lobx::Fill> fills = book.submit_many(orders);
+  std::vector<FillTuple> out;
+  out.reserve(fills.size());
+  for (const lobx::Fill& f : fills) {
+    out.emplace_back(f.maker_id, f.taker_id, f.taker_side == lobx::Side::Buy ? 0 : 1, f.price,
+                     f.qty, f.ts);
+  }
+  return out;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(_native, m) {
@@ -65,6 +86,8 @@ PYBIND11_MODULE(_native, m) {
       .def(py::init<>())
       .def("submit", &submit_order_helper<lobx::OrderBook>, py::arg("id"), py::arg("agent"),
            py::arg("side"), py::arg("type"), py::arg("price"), py::arg("qty"), py::arg("ts"))
+      .def("submit_many", &submit_many_helper<lobx::OrderBook>, py::arg("orders"),
+           py::call_guard<py::gil_scoped_release>())
       .def("cancel", &lobx::OrderBook::cancel, py::arg("order_id"), py::arg("ts"))
       .def(
           "snapshot",
@@ -82,6 +105,8 @@ PYBIND11_MODULE(_native, m) {
       .def("submit", &submit_order_helper<lobx::ConcurrentOrderBook>, py::arg("id"),
            py::arg("agent"), py::arg("side"), py::arg("type"), py::arg("price"), py::arg("qty"),
            py::arg("ts"))
+      .def("submit_many", &submit_many_helper<lobx::ConcurrentOrderBook>, py::arg("orders"),
+           py::call_guard<py::gil_scoped_release>())
       .def("cancel", &lobx::ConcurrentOrderBook::cancel, py::arg("order_id"), py::arg("ts"))
       .def(
           "snapshot",

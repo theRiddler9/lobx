@@ -23,6 +23,30 @@ std::vector<Fill> ConcurrentOrderBook::submit(const Order& order) {
   return fills;
 }
 
+std::vector<Fill> ConcurrentOrderBook::submit_many(const std::vector<Order>& orders) {
+  std::unique_lock<std::shared_mutex> lock(rw_mutex_);
+  std::vector<Fill> all_fills;
+  all_fills.reserve(orders.size() / 2);
+  for (const auto& order : orders) {
+    Timestamp ts = std::max(order.ts, last_ts_);
+    last_ts_ = ts;
+    Order adj = order;
+    adj.ts = ts;
+
+    total_submits_.fetch_add(1, std::memory_order_relaxed);
+    std::vector<Fill> fills = book_.submit(adj);
+    if (!fills.empty()) {
+      total_fills_.fetch_add(fills.size(), std::memory_order_relaxed);
+      uint64_t vol = 0;
+      for (const auto& f : fills) vol += f.qty;
+      total_traded_volume_.fetch_add(vol, std::memory_order_relaxed);
+      all_fills.insert(all_fills.end(), std::make_move_iterator(fills.begin()),
+                       std::make_move_iterator(fills.end()));
+    }
+  }
+  return all_fills;
+}
+
 bool ConcurrentOrderBook::cancel(OrderId id, Timestamp ts) {
   std::unique_lock<std::shared_mutex> lock(rw_mutex_);
   Timestamp effective_ts = std::max(ts, last_ts_);
