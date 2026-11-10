@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "lobx/concurrent_order_book.hpp"
+#include "lobx/features.hpp"
 #include "lobx/gateway.hpp"
 #include "lobx/order_book.hpp"
 
@@ -132,4 +133,32 @@ PYBIND11_MODULE(_native, m) {
       .def("total_requests_received", &lobx::ExchangeGateway::total_requests_received)
       .def("total_requests_processed", &lobx::ExchangeGateway::total_requests_processed)
       .def("total_trades_published", &lobx::ExchangeGateway::total_trades_published);
+
+  m.def(
+      "extract_features",
+      [](const std::vector<std::tuple<Timestamp, std::vector<lobx::PriceLevel>,
+                                      std::vector<lobx::PriceLevel>>>& py_snaps,
+         const std::vector<FillTuple>& py_fills) {
+        std::vector<lobx::Snapshot> snaps;
+        snaps.reserve(py_snaps.size());
+        for (const auto& [ts, bids, asks] : py_snaps) {
+          snaps.push_back(lobx::Snapshot{ts, bids, asks});
+        }
+        std::vector<lobx::Fill> fills;
+        fills.reserve(py_fills.size());
+        for (const auto& [maker, taker, side, px, q, ts] : py_fills) {
+          fills.push_back(lobx::Fill{maker, taker,
+                                    side == 0 ? lobx::Side::Buy : lobx::Side::Sell, px, q,
+                                    ts});
+        }
+        lobx::FeatureMatrix mat = lobx::extract_features(snaps, fills);
+        std::vector<std::vector<double>> out(mat.rows, std::vector<double>(mat.cols));
+        for (std::size_t r = 0; r < mat.rows; ++r) {
+          for (std::size_t c = 0; c < mat.cols; ++c) {
+            out[r][c] = mat.at(r, c);
+          }
+        }
+        return out;
+      },
+      py::arg("snapshots"), py::arg("fills"));
 }
