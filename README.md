@@ -37,6 +37,7 @@ points (lower is better) with a 95% confidence interval. Command and details in
 |---|---|---|
 | Matching engine, Python | `src/lobx/engine/book_py.py` | Readable reference: price-time priority, limit and market orders, cancels, partial fills |
 | Matching engine, C++ | `cpp/`, bound with pybind11 | Same behaviour, much faster; tested against the Python engine on a million random orders |
+| Concurrent C++ Gateway | `cpp/include/lobx/{gateway,concurrent_order_book,concurrent_queue}.hpp` | Asynchronous multi-threaded exchange pipeline: atomic sequencer, matching worker thread, mutexes & condition variables |
 | Event log and replay | `src/lobx/engine/event_log.py`, `replay.py` | Every submit, cancel and fill is logged; a log replays to the identical book |
 | Simulator | `src/lobx/sim/` | Seeded clock and random streams; noise traders, a market maker, a momentum trader |
 | Execution strategies | `src/lobx/strategies/` | TWAP, VWAP, and an adaptive strategy (passive limit orders, model-driven aggression, deadline safety nets) |
