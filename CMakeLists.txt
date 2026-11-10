@@ -74,4 +74,11 @@ if(LOBX_BUILD_TESTS)
   # A short run of the benchmark stream (random orders and cancels) doubles as a stress test, most
   # useful under LOBX_SANITIZE.
   add_test(NAME lobx_stress COMMAND lobx_bench 200000)
+
+  add_executable(lobx_concurrent_bench cpp/bench/bench_concurrent_gateway.cpp)
+  target_link_libraries(lobx_concurrent_bench PRIVATE lobx_engine)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lobx_concurrent_bench PRIVATE -Wall -Wextra -Werror)
+  endif()
+  add_test(NAME lobx_concurrent_stress COMMAND lobx_concurrent_bench 50000 4)
 endif()
