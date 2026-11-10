@@ -83,6 +83,13 @@ if(LOBX_BUILD_TESTS)
   endif()
   add_test(NAME test_slab_order_book COMMAND test_slab_order_book)
 
+  add_executable(test_spsc_ring_buffer cpp/tests/test_spsc_ring_buffer.cpp)
+  target_link_libraries(test_spsc_ring_buffer PRIVATE lobx_engine)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(test_spsc_ring_buffer PRIVATE -Wall -Wextra -Werror)
+  endif()
+  add_test(NAME test_spsc_ring_buffer COMMAND test_spsc_ring_buffer)
+
   add_executable(lobx_bench cpp/bench/bench_order_book.cpp)
   target_link_libraries(lobx_bench PRIVATE lobx_engine)
   # A short run of the benchmark stream (random orders and cancels) doubles as a stress test, most
