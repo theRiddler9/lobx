@@ -22,7 +22,7 @@ endif()
 find_package(Threads REQUIRED)
 
 # The engine itself: plain C++17 with threads support.
-add_library(lobx_engine STATIC cpp/src/order_book.cpp)
+add_library(lobx_engine STATIC cpp/src/order_book.cpp cpp/src/concurrent_order_book.cpp)
 target_include_directories(lobx_engine PUBLIC cpp/include)
 target_link_libraries(lobx_engine PUBLIC Threads::Threads)
 set_target_properties(lobx_engine PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -54,6 +54,13 @@ if(LOBX_BUILD_TESTS)
     target_compile_options(test_concurrent_queue PRIVATE -Wall -Wextra -Werror)
   endif()
   add_test(NAME test_concurrent_queue COMMAND test_concurrent_queue)
+
+  add_executable(test_concurrent_order_book cpp/tests/test_concurrent_order_book.cpp)
+  target_link_libraries(test_concurrent_order_book PRIVATE lobx_engine)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(test_concurrent_order_book PRIVATE -Wall -Wextra -Werror)
+  endif()
+  add_test(NAME test_concurrent_order_book COMMAND test_concurrent_order_book)
 
   add_executable(lobx_bench cpp/bench/bench_order_book.cpp)
   target_link_libraries(lobx_bench PRIVATE lobx_engine)
