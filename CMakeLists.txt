@@ -19,9 +19,12 @@ if(LOBX_SANITIZE)
   add_link_options(-fsanitize=address,undefined)
 endif()
 
-# The engine itself: plain C++17 with no dependencies.
+find_package(Threads REQUIRED)
+
+# The engine itself: plain C++17 with threads support.
 add_library(lobx_engine STATIC cpp/src/order_book.cpp)
 target_include_directories(lobx_engine PUBLIC cpp/include)
+target_link_libraries(lobx_engine PUBLIC Threads::Threads)
 set_target_properties(lobx_engine PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(lobx_engine PRIVATE -Wall -Wextra -Werror)
@@ -44,6 +47,13 @@ if(LOBX_BUILD_TESTS)
     target_compile_options(lobx_tests PRIVATE -Wall -Wextra -Werror)
   endif()
   add_test(NAME lobx_tests COMMAND lobx_tests)
+
+  add_executable(test_concurrent_queue cpp/tests/test_concurrent_queue.cpp)
+  target_link_libraries(test_concurrent_queue PRIVATE lobx_engine)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(test_concurrent_queue PRIVATE -Wall -Wextra -Werror)
+  endif()
+  add_test(NAME test_concurrent_queue COMMAND test_concurrent_queue)
 
   add_executable(lobx_bench cpp/bench/bench_order_book.cpp)
   target_link_libraries(lobx_bench PRIVATE lobx_engine)
