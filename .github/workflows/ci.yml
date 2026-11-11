@@ -67,3 +67,21 @@ jobs:
           cmake -S . -B build/san -DLOBX_BUILD_TESTS=ON -DLOBX_SANITIZE=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
           cmake --build build/san
           ctest --test-dir build/san --output-on-failure
+
+  docker:
+    name: Docker build & service test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build container image with Docker Compose
+        run: docker compose build
+
+      - name: Start services and verify healthcheck
+        run: |
+          docker compose up -d
+          timeout 60s bash -c 'until curl -sf http://localhost:8000/health > /dev/null; do sleep 2; done'
+          docker compose ps
+          curl --fail http://localhost:8000/health
+          curl --fail http://localhost:8501/_stcore/health
+          docker compose down
