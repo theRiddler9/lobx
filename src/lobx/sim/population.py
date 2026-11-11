@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 
 from lobx.sim.agents.base import Agent
+from lobx.sim.agents.informed import InformedTrader
 from lobx.sim.agents.market_maker import MarketMaker
 from lobx.sim.agents.momentum import MomentumTrader
 from lobx.sim.agents.noise import NoiseTrader
@@ -29,9 +30,11 @@ class MarketConfig:
     num_market_makers: int = 2
     num_noise_traders: int = 100
     num_momentum_traders: int = 10
+    num_informed_traders: int = 0
     market_maker_interval_ns: int = 1 * NS_PER_S
     noise_interval_ns: int = 5 * NS_PER_S
     momentum_interval_ns: int = 2 * NS_PER_S
+    informed_interval_ns: int = 2 * NS_PER_S
     sample_interval_ns: int = 1 * NS_PER_S
     # How deep and how thick the market makers' quotes are. Thin quotes are what let the price
     # move: with 10 shares at each of 3 levels per maker, the price simply never budged.
@@ -54,6 +57,7 @@ class MarketConfig:
             "market_maker_interval_ns",
             "noise_interval_ns",
             "momentum_interval_ns",
+            "informed_interval_ns",
             "sample_interval_ns",
             "market_maker_quote_qty",
             "market_maker_levels",
@@ -69,7 +73,12 @@ class MarketConfig:
             )
         if isinstance(self.volume_u_shape, bool) or self.volume_u_shape < 0.0:
             raise ValueError(f"volume_u_shape must be non-negative, got {self.volume_u_shape!r}")
-        for name in ("num_market_makers", "num_noise_traders", "num_momentum_traders"):
+        for name in (
+            "num_market_makers",
+            "num_noise_traders",
+            "num_momentum_traders",
+            "num_informed_traders",
+        ):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ValueError(f"{name} must be a non-negative integer, got {value!r}")
@@ -117,5 +126,8 @@ def build_background_agents(config: MarketConfig) -> list[Agent]:
         next_id += 1
     for _ in range(config.num_momentum_traders):
         agents.append(MomentumTrader(next_id, config.momentum_interval_ns))
+        next_id += 1
+    for _ in range(config.num_informed_traders):
+        agents.append(InformedTrader(next_id, config.informed_interval_ns))
         next_id += 1
     return agents
