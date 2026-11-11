@@ -1,5 +1,7 @@
 #include "lobx/binary_log.hpp"
 
+#include <cstring>
+
 namespace lobx {
 
 void BinaryEventLogger::append(const BinaryEvent& ev) {
@@ -8,29 +10,53 @@ void BinaryEventLogger::append(const BinaryEvent& ev) {
 }
 
 void BinaryEventLogger::log_submit(const Order& o) {
-  append(BinaryEvent{'A', static_cast<std::uint8_t>(o.side == Side::Buy ? 0 : 1),
-                     static_cast<std::uint8_t>(o.type), 0, o.id, o.agent, o.price.value_or(0),
-                     o.qty, o.ts});
+  BinaryEvent ev{};
+  ev.type = 'A';
+  ev.side = static_cast<std::uint8_t>(o.side == Side::Buy ? 0 : 1);
+  ev.order_type = static_cast<std::uint8_t>(o.type);
+  ev.order_id = o.id;
+  ev.agent_id = o.agent;
+  ev.price = o.price.value_or(0);
+  ev.qty = o.qty;
+  ev.ts = o.ts;
+  append(ev);
 }
 
 void BinaryEventLogger::log_cancel(OrderId id, Timestamp ts) {
-  append(BinaryEvent{'C', 0, 0, 0, id, 0, 0, 0, ts});
+  BinaryEvent ev{};
+  ev.type = 'C';
+  ev.order_id = id;
+  ev.ts = ts;
+  append(ev);
 }
 
 void BinaryEventLogger::log_fill(const Fill& f) {
-  append(BinaryEvent{'F', static_cast<std::uint8_t>(f.taker_side == Side::Buy ? 0 : 1), 0, 0,
-                     f.maker_id, f.taker_id, f.price, f.qty, f.ts});
+  BinaryEvent ev{};
+  ev.type = 'F';
+  ev.side = static_cast<std::uint8_t>(f.taker_side == Side::Buy ? 0 : 1);
+  ev.order_id = f.maker_id;
+  ev.agent_id = f.taker_id;
+  ev.price = f.price;
+  ev.qty = f.qty;
+  ev.ts = f.ts;
+  append(ev);
 }
 
 std::size_t BinaryReplayer::replay(const std::uint8_t* data, std::size_t size, OrderBook& book) {
   const std::size_t count = size / sizeof(BinaryEvent);
-  const auto* events = reinterpret_cast<const BinaryEvent*>(data);
   for (std::size_t i = 0; i < count; ++i) {
-    const BinaryEvent& ev = events[i];
+    BinaryEvent ev{};
+    std::memcpy(&ev, data + i * sizeof(BinaryEvent), sizeof(BinaryEvent));
     if (ev.type == 'A') {
-      book.submit(Order{ev.order_id, ev.agent_id, ev.side == 0 ? Side::Buy : Side::Sell,
-                        static_cast<OrderType>(ev.order_type),
-                        ev.price > 0 ? std::make_optional(ev.price) : std::nullopt, ev.qty, ev.ts});
+      const OrderId id = ev.order_id;
+      const AgentId agent = ev.agent_id;
+      const Side side = (ev.side == 0) ? Side::Buy : Side::Sell;
+      const OrderType type = static_cast<OrderType>(ev.order_type);
+      const Price px = ev.price;
+      const Qty qty = ev.qty;
+      const Timestamp ts = ev.ts;
+      book.submit(
+          Order{id, agent, side, type, px > 0 ? std::make_optional(px) : std::nullopt, qty, ts});
     } else if (ev.type == 'C') {
       book.cancel(ev.order_id, ev.ts);
     }

@@ -9,19 +9,19 @@ namespace lobx {
 
 #pragma pack(push, 1)
 struct BinaryEvent {
-  std::uint8_t type;        // 'A' = Add/Submit, 'C' = Cancel, 'F' = Fill
-  std::uint8_t side;        // 0 = Buy, 1 = Sell
-  std::uint8_t order_type;  // OrderType (0: Limit, 1: Market, etc.)
-  std::uint8_t reserved = 0;
-  std::int64_t order_id;
-  std::int64_t agent_id;
-  std::int64_t price;
-  std::int64_t qty;
-  std::int64_t ts;
+  std::uint8_t type = 0;        // 'A' = Add/Submit, 'C' = Cancel, 'F' = Fill
+  std::uint8_t side = 0;        // 0 = Buy, 1 = Sell
+  std::uint8_t order_type = 0;  // OrderType (0: Limit, 1: Market, etc.)
+  std::uint8_t pad[5] = {0};    // Pad to 8-byte alignment for 64-bit members
+  std::int64_t order_id = 0;
+  std::int64_t agent_id = 0;
+  std::int64_t price = 0;
+  std::int64_t qty = 0;
+  std::int64_t ts = 0;
 };
 #pragma pack(pop)
 
-static_assert(sizeof(BinaryEvent) == 44, "BinaryEvent must be 44 bytes packed");
+static_assert(sizeof(BinaryEvent) == 48, "BinaryEvent must be 48 bytes naturally aligned");
 
 class BinaryEventLogger {
  public:
