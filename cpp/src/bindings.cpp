@@ -195,7 +195,8 @@ PYBIND11_MODULE(_native, m) {
       .def_readwrite("num_noise_agents", &lobx::SimConfig::num_noise_agents)
       .def_readwrite("noise_lambda", &lobx::SimConfig::noise_lambda)
       .def_readwrite("mm_half_spread", &lobx::SimConfig::mm_half_spread)
-      .def_readwrite("mm_skew_per_qty", &lobx::SimConfig::mm_skew_per_qty);
+      .def_readwrite("mm_skew_per_qty", &lobx::SimConfig::mm_skew_per_qty)
+      .def_readwrite("volume_u_shape", &lobx::SimConfig::volume_u_shape);
 
   py::class_<lobx::CppMarket>(m, "NativeMarket")
       .def(py::init<lobx::SimConfig>(), py::arg("config"))

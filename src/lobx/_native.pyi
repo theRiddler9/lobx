@@ -85,6 +85,7 @@ class NativeSimConfig:
     noise_lambda: float
     mm_half_spread: int
     mm_skew_per_qty: int
+    volume_u_shape: float
     def __init__(self) -> None: ...
 
 class NativeMarket:

@@ -17,6 +17,7 @@ struct SimConfig {
   double noise_lambda = 2.0;  // arrivals per second
   Price mm_half_spread = 2;
   Price mm_skew_per_qty = 1;
+  double volume_u_shape = 0.0;
 };
 
 class CppMarket {

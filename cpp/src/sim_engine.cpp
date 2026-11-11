@@ -14,7 +14,14 @@ CppMarket::CppMarket(SimConfig cfg) : cfg_(cfg), rng_(cfg.seed), last_mid_(cfg.i
 }
 
 void CppMarket::schedule_next(int type, int id, double lambda_sec) {
-  std::exponential_distribution<double> dist(lambda_sec);
+  double eff_lambda = lambda_sec;
+  if (type == 0 && cfg_.volume_u_shape > 0.0 && cfg_.duration_ns > 0) {
+    double t_mid = cfg_.duration_ns / 2.0;
+    double u = (static_cast<double>(current_ts_) - t_mid) / t_mid;
+    double scale = 1.0 + cfg_.volume_u_shape * (u * u);
+    eff_lambda *= scale;
+  }
+  std::exponential_distribution<double> dist(eff_lambda);
   auto dt_ns = static_cast<Timestamp>(dist(rng_) * 1e9);
   queue_.push({current_ts_ + std::max<Timestamp>(100'000, dt_ns), type, id});
 }

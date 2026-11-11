@@ -137,3 +137,15 @@ def test_same_stream_gives_the_same_orders() -> None:
 def test_bad_parameters_are_rejected(bad: dict[str, float]) -> None:
     with pytest.raises(ValueError):
         _trader(**bad)
+
+
+def test_u_shaped_volume_modulates_wake_intensity() -> None:
+    duration = 300_000_000_000
+    trader = _trader(total_duration_ns=duration, u_shape_alpha=2.0)
+    # Average next wake gap over many draws at midday (t = 150s) vs open (t = 0s)
+    gaps_mid = [
+        trader.next_wake(150_000_000_000, default_rng(i)) - 150_000_000_000 for i in range(1_000)
+    ]
+    gaps_open = [trader.next_wake(0, default_rng(i)) for i in range(1_000)]
+    # At open (scale = 3.0), arrivals are 3x faster, so mean gap is significantly smaller
+    assert sum(gaps_open) < sum(gaps_mid) * 0.6
