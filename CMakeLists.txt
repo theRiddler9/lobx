@@ -19,6 +19,14 @@ if(LOBX_SANITIZE)
   add_link_options(-fsanitize=address,undefined)
 endif()
 
+# ThreadSanitizer (TSan) catches data races and thread synchronization bugs in concurrent code.
+# Mutually exclusive with ASan.
+option(LOBX_TSAN "Build the concurrent tests with ThreadSanitizer" OFF)
+if(LOBX_TSAN)
+  add_compile_options(-fsanitize=thread -fno-omit-frame-pointer -g)
+  add_link_options(-fsanitize=thread)
+endif()
+
 find_package(Threads REQUIRED)
 
 # The engine itself: plain C++17 with threads support.
@@ -99,6 +107,13 @@ if(LOBX_BUILD_TESTS)
     target_compile_options(test_spsc_gateway PRIVATE -Wall -Wextra -Werror)
   endif()
   add_test(NAME test_spsc_gateway COMMAND test_spsc_gateway)
+
+  add_executable(test_thread_pool cpp/tests/test_thread_pool.cpp)
+  target_link_libraries(test_thread_pool PRIVATE lobx_engine)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(test_thread_pool PRIVATE -Wall -Wextra -Werror)
+  endif()
+  add_test(NAME test_thread_pool COMMAND test_thread_pool)
 
   add_executable(test_order_types cpp/tests/test_order_types.cpp)
   target_link_libraries(test_order_types PRIVATE lobx_engine)
