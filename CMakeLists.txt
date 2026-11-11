@@ -93,6 +93,13 @@ if(LOBX_BUILD_TESTS)
   endif()
   add_test(NAME test_spsc_ring_buffer COMMAND test_spsc_ring_buffer)
 
+  add_executable(test_spsc_gateway cpp/tests/test_spsc_gateway.cpp)
+  target_link_libraries(test_spsc_gateway PRIVATE lobx_engine)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(test_spsc_gateway PRIVATE -Wall -Wextra -Werror)
+  endif()
+  add_test(NAME test_spsc_gateway COMMAND test_spsc_gateway)
+
   add_executable(test_order_types cpp/tests/test_order_types.cpp)
   target_link_libraries(test_order_types PRIVATE lobx_engine)
   if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
