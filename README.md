@@ -10,38 +10,47 @@ LOBX simulates an electronic financial exchange with an industrial matching engi
 
 ## Key Highlights & Performance Milestones
 
-* **Vectorized Batch Ingress (>14.8M orders/sec)**: C++ native batch matching via `submit_many` with GIL release, eliminating per-order language boundary overhead and surpassing the 10x throughput target.
-* **Lock-Free SPSC Ring Buffer**: Cacheline-padded (64-byte aligned) Single-Producer Single-Consumer lock-free ring buffer for deterministic, zero-contention event streaming between matching engines and gateways.
-* **Zero-Allocation Slab Memory Pool**: Cache-friendly preallocated block allocator (`lobx::MemoryPool<Order>`) providing $O(1)$ allocation/deallocation on the matching hot path.
-* **Institutional Order Types**: Full support for `LIMIT`, `MARKET`, `IOC` (Immediate-or-Cancel), `FOK` (Fill-or-Kill), and `PostOnly` (maker-only passive resting).
-* **Binary ITCH Logging & Fast Replay (>12M events/sec)**: 48-byte aligned compact binary event serialization with bit-exact determinism across replays.
-* **100% Execution Completion**: Deadline sweep scheduling eliminates liquidity exhaustion, achieving **200 of 200 seed completions (100.0%)** for TWAP, VWAP, and Adaptive algorithms.
-* **U-Shaped Intraday Volume Smile**: Realistic volume intensity modeling ($\lambda(t) = \lambda_0 [1 + \alpha ((t - T/2)/(T/2))^2]$) captures open/close volume surges and midday liquidity lulls, enabling VWAP to legitimately outperform TWAP.
-* **Gymnasium Reinforcement Learning**: Standard Gymnasium environment (`lobx.rl.ExecutionEnv`) with implementation shortfall reward shaping for training deep RL execution agents (PPO / SAC).
-* **Differential Testing**: Python reference and C++ native engines are differential-tested against 1,000,000 randomized orders to guarantee 100% invariant parity.
+* **High-Speed C++ Engine (5.22M orders/sec)**: Pure C++ matching engine achieving 5,220,442 orders/s with 124 ns median latency and 463 ns p99 latency (`lobx_bench 1000000`).
+* **Python/C++ Extension Boundary**: Benchmark across 1,000,000 orders shows 724k ops/s wrapped (2.2x vs pure Python) and 1.07M ops/s raw (3.2x vs pure Python) due to per-order language crossing overhead (`benchmarks/bench_engines.py`).
+* **Differential Testing**: Python reference and C++ native engines are differential-tested against 1,000,000 randomized orders to guarantee 100% invariant parity (`tests/test_native_differential.py`).
+* **Institutional Execution Baseline**: Evaluated selling 3,000 shares across 5 simulated minutes on 200 held-out test seeds (seeds 1000–1199).
+* **Passive Spread Capture Advantage**: Resting limit orders at the touch (`passive`: 19.25 bps) outperform aggressive market order slicing (`twap`: 56.54 bps) by **~37 bps** on 99% of seeds.
+* **Honest ML Accounting**: While LightGBM predicts 1-second price movement with 0.599 accuracy (vs. 0.451 naive baseline), acting on 1-tick forecasts via market orders incurs spread/impact costs that exceed the forecast value, resulting in `adaptive` (19.45 bps) matching `passive` (19.25 bps) within noise.
+* **Deterministic Event Log & Bit-Exact Replay**: Append-only event log capturing every order, cancellation, and execution, verified by cryptographic hash matching.
 
 ---
 
 ## Execution Benchmark Results
 
-All benchmarks evaluate selling 3,000 shares across 5 simulated minutes on 200 held-out test seeds (seeds 1000–1199). Cost is measured as **implementation shortfall in basis points** against the arrival mid-price (lower is better):
+All benchmarks evaluate selling 3,000 shares (about 20% of market volume) across 5 simulated minutes (t=60s to t=360s) on 200 held-out test seeds (seeds 1000–1199). Cost is measured as **implementation shortfall in basis points** against the arrival mid-price (lower is better):
 
 $$\text{Shortfall (bps)} = \frac{\bar{P}_{\text{exec}} - P_{\text{arrival}}}{P_{\text{arrival}}} \times 10{,}000$$
 
-`python -m lobx.cli eval --strategies twap,vwap,passive,adaptive --seeds 200`
+Command:
+```bash
+python -m lobx.cli eval --strategies twap,vwap,passive,adaptive --seeds 200 --plot docs/figures/comparison.png
+```
 
-| Strategy | Seeds Completed | Completion Rate | Mean Cost (bps) | Std Dev (bps) | 95% Confidence Interval |
+| Strategy | Completed Seeds | Incomplete | Mean Cost (bps) | Std Dev (bps) | 95% Confidence Interval |
 |---|---:|---:|---:|---:|---|
-| **TWAP** | 200 / 200 | 100.0% | 56.54 | 41.14 | [50.77, 62.31] |
-| **VWAP** (Standard Flat) | 200 / 200 | 100.0% | 57.81 | 42.22 | [51.88, 63.74] |
-| **VWAP** (U-Shape Volume) | 200 / 200 | 100.0% | **17.70** | 21.05 | [14.72, 20.68] |
-| **Passive Limit** | 200 / 200 | 100.0% | 19.25 | 19.54 | [16.53, 21.98] |
-| **Adaptive ML** | 200 / 200 | 100.0% | 19.45 | 19.77 | [16.69, 22.20] |
+| **TWAP** | 198 | 2 | 56.54 | 41.14 | [50.77, 62.31] |
+| **VWAP** | 197 | 3 | 57.81 | 42.22 | [51.88, 63.74] |
+| **Passive Limit** | 200 | 0 | 19.25 | 19.54 | [16.53, 21.98] |
+| **Adaptive ML** | 200 | 0 | 19.45 | 19.77 | [16.69, 22.20] |
 
-### Quantitative Findings
+Paired Differences by Seed ($a - b$ in bps; negative means $a$ is cheaper; complete seeds only):
+
+| Comparison ($a - b$) | Seeds Used | Mean Difference (bps) | 95% Confidence Interval | $a$ Cheaper On | Verdict |
+|---|---:|---:|---|---:|---|
+| **vwap - twap** | 197 | +1.41 | [0.71, 2.10] | 26% of seeds | TWAP cheaper |
+| **passive - twap** | 198 | -37.25 | [-41.44, -33.06] | 99% of seeds | Passive cheaper |
+| **adaptive - twap** | 198 | -37.06 | [-41.26, -32.85] | 99% of seeds | Adaptive cheaper |
+| **adaptive - passive** | 200 | +0.19 | [-0.06, 0.45] | 0% of seeds | No clear difference |
+
+### Key Empirical Findings
 1. **Passive Orders Earn the Spread**: Resting limit orders at the touch rather than crossing with aggressive market orders saves **~37 bps** across 99% of seeds.
-2. **Volume Profiling Under Liquidity Smile**: In markets with stationary flat volume, VWAP behaves similarly to TWAP. However, under authentic intraday U-shaped volume distributions, VWAP concentrates child order volume when market liquidity is thickest, beating TWAP by **-0.53 bps** lower shortfall.
-3. **Short-Horizon Alpha vs. Spread Costs**: While ML models accurately predict 1-tick mid-price moves (>0.59 accuracy vs. 0.45 naive baseline), paying the half-spread (2–4 ticks) to aggressively cross the book on a 1-tick forecast is unprofitable. Institutional execution algorithms succeed by combining passive spread capture with selective urgency only when spreads are tight ($\le 1$ tick).
+2. **VWAP vs. TWAP Under Uniform Volume**: With background agents trading at stationary Poisson rates, the empirical volume profile is flat (~3.3% per slice), causing VWAP to perform essentially identically to TWAP (+1.41 bps difference due to volume profile estimation noise).
+3. **The Limits of Short-Horizon Predictive Alpha**: The LightGBM model reliably predicts 1-second price direction (>0.59 accuracy vs. 0.45 naive baseline). However, paying the half-spread (2–4 ticks) to aggressively cross the book on a 1-tick forecast is unprofitable. The optimal policy tuned on validation seeds selected a high threshold (0.90) where aggressive orders almost never trigger, converging to the passive ablation.
 
 ---
 
@@ -179,39 +188,40 @@ docker compose down
 
 ## Benchmarks
 
-### Engine Throughput (Ops / Sec)
-Run native C++ throughput and batch benchmarks:
-```bash
-# Build C++ benchmarks
-cmake -S . -B build/bench -DCMAKE_BUILD_TYPE=Release
-cmake --build build/bench
+### Engine Throughput and Boundary Benchmark
 
-# 1,000,000 sequential orders benchmark
-./build/bench/lobx_bench 1000000
+Commands to reproduce (documented in `docs/results.md`):
 
-# Vectorized batch ingress benchmark
-./build/bench/lobx_batch_bench
+1. **Pure C++ Engine** (no Python runtime):
+   ```bash
+   cmake -S . -B build/cpp -DLOBX_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+   cmake --build build/cpp
+   ./build/cpp/lobx_bench 1000000
+   ```
 
-# Multi-threaded concurrent gateway benchmark
-./build/bench/lobx_concurrent_bench 50000 4
-```
+2. **Python Reference vs. Native Engine** (called from Python):
+   ```bash
+   python benchmarks/bench_engines.py --ops 1000000
+   ```
 
-| Engine Mode | Implementation | Throughput (orders/sec) | Average Latency |
-|---|---|---:|---:|
-| **Python Reference** | Pure Python 3.11+ | ~45,000 ops/s | ~22.2 $\mu\text{s}$ |
-| **C++ Raw Engine** | C++17 `lobx::OrderBook` | ~1,850,000 ops/s | ~540 ns |
-| **C++ Slab Memory Pool** | Preallocated `SlabOrderBook` | ~2,400,000 ops/s | ~410 ns |
-| **C++ Concurrent Gateway** | Asynchronous multi-threaded | ~1,200,000 ops/s | ~830 ns |
-| **C++ Vectorized Batch Ingress** | `submit_many` (GIL released) | **>14,800,000 ops/s** | **<68 ns** |
+| Engine Mode | Execution Environment | Throughput (orders/s) | Median Latency | p99 Latency | Speedup vs. Python |
+|---|---|---:|---:|---:|---:|
+| **Python Reference** | Pure Python 3.11+ | 335,980 | 2,153 ns | 11,321 ns | 1.0x |
+| **C++ Native-Wrapped** | `NativeOrderBook` (dataclass bridge) | 724,793 | 841 ns | 5,101 ns | 2.2x |
+| **C++ Native-Raw** | Pybind11 raw integer interface | 1,072,217 | 710 ns | 2,414 ns | 3.2x |
+| **Pure C++ Engine** | Standalone C++17 binary | 5,220,442 | 124 ns | 463 ns | ~15.5x |
+
+> [!NOTE]
+> While pure C++ delivers **>5.2M orders/s (~15.5x speedup)** over Python reference, calling C++ from Python per-order drops effective speedup to **2.2x–3.2x** due to pybind11 translation overhead and GIL contention. This highlights why a vectorized C++ batch API (`submit_many`) is the focus of Phase A.
 
 ---
 
 ## Verification & Testing Suite
 
-* **C++ Unit Tests & Benchmarks**: 13 test suites covering matching, cancellation, queue priority, slabs, rings, and gateway semantics (`ctest --output-on-failure`).
-* **Python Test Suite (598 tests)**: 100% test coverage spanning engine mechanics, property tests (`hypothesis`), agent behavior, and evaluation metrics (`pytest`).
-* **Sanitizer Verification (ASan + UBSan)**: Built and verified with `-fsanitize=address,undefined -fno-sanitize-recover=undefined` on Ubuntu runners in CI to guarantee zero memory leaks, buffer overruns, or alignment violations.
-* **Lookahead Poison Test**: Proves mathematical causality—features at timestamp $t$ only utilize information $\le t$; intentional lookahead injection is caught and raised as `LookaheadError`.
+* **C++ Unit Tests & Sanitizers**: Verified under CTest with AddressSanitizer and UndefinedBehaviorSanitizer (`ctest --test-dir build/san`).
+* **Python Test Suite (600 passing tests)**: Mechanics, invariant property tests (`hypothesis`), deterministic replay, and causality tests (`pytest`).
+* **Lookahead Poison Test**: Mathematical verification that features at time $t$ do not access information $> t$; intentional leaks trigger `LookaheadError` (`pytest tests/test_leakage.py`).
+* **Deterministic Event Log Replay**: Verification that runs produce identical logs from identical seeds, and replaying the log reproduces identical final book states (`python -m lobx.cli run` + `replay`).
 * **CI Matrix**: Continuous integration builds and tests across Linux (`ubuntu-latest`) and macOS (`macos-latest`) on Python 3.11 and 3.13, plus native Docker Compose build & container healthcheck tests (`.github/workflows/ci.yml`).
 
 ---
