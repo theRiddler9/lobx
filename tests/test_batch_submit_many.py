@@ -32,6 +32,7 @@ pytestmark = pytest.mark.skipif(not native_available(), reason="C++ engine not b
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _orders_only(stream: list) -> list[Order]:
     """Return only the Order entries from a mixed stream (drop CancelOps)."""
     return [op for op in stream if isinstance(op, Order)]
@@ -57,6 +58,7 @@ def _cpp_batch_fills(orders: list[Order]) -> tuple[list[Fill], NativeOrderBook]:
 # Core differential tests
 # ---------------------------------------------------------------------------
 
+
 class TestSubmitManyDifferential:
     """submit_many must match sequential Python reference on the same stream."""
 
@@ -70,8 +72,7 @@ class TestSubmitManyDifferential:
         cpp_fills, _ = _cpp_batch_fills(orders)
 
         assert cpp_fills == py_fills, (
-            f"seed={seed}: fill mismatch: "
-            f"py={len(py_fills)} fills, cpp={len(cpp_fills)} fills"
+            f"seed={seed}: fill mismatch: py={len(py_fills)} fills, cpp={len(cpp_fills)} fills"
         )
 
     @pytest.mark.parametrize("seed", range(5))
@@ -104,6 +105,7 @@ class TestSubmitManyDifferential:
 # ---------------------------------------------------------------------------
 # Edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestSubmitManyEdgeCases:
     def test_empty_batch_returns_no_fills(self) -> None:
@@ -175,6 +177,7 @@ class TestSubmitManyEdgeCases:
 # ---------------------------------------------------------------------------
 # Idempotence: sequential submit and batch produce the same final book
 # ---------------------------------------------------------------------------
+
 
 def test_sequential_vs_batch_produces_identical_snapshot() -> None:
     """submit_many on N orders must yield the same book as N sequential submits."""

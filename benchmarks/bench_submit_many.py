@@ -117,9 +117,7 @@ def main() -> None:
         f"python: {platform.python_version()}, "
         f"orders: {len(orders):,}, seed: {args.seed}, batch_size: {args.batch_size}\n"
     )
-    print(
-        "| mode | ops/s | median ns/order | p99 ns/order | speedup vs python-seq |"
-    )
+    print("| mode | ops/s | median ns/order | p99 ns/order | speedup vs python-seq |")
     print("|---|---:|---:|---:|---:|")
 
     baseline = 0.0
@@ -138,9 +136,7 @@ def main() -> None:
             f"| {name} | {rate:,.0f} | {median_ns:,.0f} | {p99_ns:,.0f} | {rate / baseline:.1f}x |"
         )
 
-    print(
-        "\nNote: batch latency is per-order average within each chunk, not per-call."
-    )
+    print("\nNote: batch latency is per-order average within each chunk, not per-call.")
     print("Re-run on a quiet machine; cache effects and GC can shift numbers by ±20%.")
 
 
