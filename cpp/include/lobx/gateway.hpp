@@ -52,14 +52,18 @@ class ExchangeGateway {
   // Gateway lifecycle
   void start();
   void stop();
-  [[nodiscard]] bool is_running() const noexcept { return running_.load(std::memory_order_acquire); }
+  [[nodiscard]] bool is_running() const noexcept {
+    return running_.load(std::memory_order_acquire);
+  }
 
   // Client ingress (thread-safe, callable concurrently from any number of client threads)
   uint64_t submit_order(const Order& order);
   uint64_t cancel_order(OrderId id, Timestamp ts, AgentId agent_id);
 
-  // Synchronization barrier: blocks until all requests up to seq_id are matched by the worker thread.
-  bool wait_until_processed(uint64_t seq_id, std::chrono::milliseconds timeout = std::chrono::milliseconds(5000));
+  // Synchronization barrier: blocks until all requests up to seq_id are matched by the worker
+  // thread.
+  bool wait_until_processed(uint64_t seq_id,
+                            std::chrono::milliseconds timeout = std::chrono::milliseconds(5000));
 
   // Client egress: subscribe to execution/cancel events
   std::optional<GatewayEvent> poll_event() { return egress_queue_.try_pop(); }
@@ -70,9 +74,15 @@ class ExchangeGateway {
   const ConcurrentOrderBook& book() const noexcept { return book_; }
 
   // Lock-free performance statistics
-  [[nodiscard]] uint64_t total_requests_received() const noexcept { return next_seq_.load(std::memory_order_relaxed) - 1; }
-  [[nodiscard]] uint64_t total_requests_processed() const noexcept { return last_processed_seq_.load(std::memory_order_relaxed); }
-  [[nodiscard]] uint64_t total_trades_published() const noexcept { return total_trades_published_.load(std::memory_order_relaxed); }
+  [[nodiscard]] uint64_t total_requests_received() const noexcept {
+    return next_seq_.load(std::memory_order_relaxed) - 1;
+  }
+  [[nodiscard]] uint64_t total_requests_processed() const noexcept {
+    return last_processed_seq_.load(std::memory_order_relaxed);
+  }
+  [[nodiscard]] uint64_t total_trades_published() const noexcept {
+    return total_trades_published_.load(std::memory_order_relaxed);
+  }
 
  private:
   void run_worker();

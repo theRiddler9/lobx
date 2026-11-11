@@ -1,10 +1,10 @@
 #pragma once
 
-#include "lobx/order_book.hpp"
-
 #include <queue>
 #include <random>
 #include <vector>
+
+#include "lobx/order_book.hpp"
 
 namespace lobx {
 
@@ -14,7 +14,7 @@ struct SimConfig {
   Price initial_price = 10'000;
   Qty trade_size = 100;
   int num_noise_agents = 5;
-  double noise_lambda = 2.0;       // arrivals per second
+  double noise_lambda = 2.0;  // arrivals per second
   Price mm_half_spread = 2;
   Price mm_skew_per_qty = 1;
 };
@@ -34,7 +34,7 @@ class CppMarket {
  private:
   struct WakeEvent {
     Timestamp ts;
-    int type; // 0: noise, 1: mm, 2: momentum
+    int type;  // 0: noise, 1: mm, 2: momentum
     int id;
     bool operator>(const WakeEvent& o) const { return ts > o.ts; }
   };

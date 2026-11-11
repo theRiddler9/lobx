@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+
 import numpy as np
 
 from lobx._native import NativeMarket, NativeSimConfig
@@ -26,6 +27,7 @@ class ExecutionEnv:
     """Gymnasium-compatible optimal execution environment."""
 
     def __init__(self, config: EnvConfig | None = None) -> None:
+        """Initialize the execution environment with given configuration."""
         self.cfg = config or EnvConfig()
         self.market: NativeMarket | None = None
         self.arrival_mid: float = 10_000.0
@@ -35,7 +37,14 @@ class ExecutionEnv:
         self.current_step: int = 0
         self._last_mid: float = self.arrival_mid
 
-    def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None) -> tuple[np.ndarray, dict[str, Any]]:
+    def reset(
+        self,
+        *,
+        seed: int | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> tuple[np.ndarray, dict[str, Any]]:
+        """Reset the market state and initialize a new execution episode."""
+        del options
         used_seed = seed if seed is not None else self.cfg.seed
         sim_cfg = NativeSimConfig()
         sim_cfg.seed = used_seed
@@ -68,9 +77,13 @@ class ExecutionEnv:
         rem_qty_ratio = float(self.rem_qty) / max(1, self.cfg.parent_qty)
         rem_time_ratio = float(self.cfg.num_steps - self.current_step) / max(1, self.cfg.num_steps)
 
-        return np.array([rem_qty_ratio, rem_time_ratio, spread, imbalance, momentum], dtype=np.float32)
+        return np.array(
+            [rem_qty_ratio, rem_time_ratio, spread, imbalance, momentum],
+            dtype=np.float32,
+        )
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        """Advance the environment by taking an execution action."""
         assert self.market is not None, "Call reset() before step()"
         self.current_step += 1
         qty_to_trade = min(self.rem_qty, self.cfg.slice_size)
@@ -106,7 +119,11 @@ class ExecutionEnv:
             self.rem_qty = 0
 
         # Implementation shortfall in bps: (exec_price - arrival_mid) / arrival_mid * 10,000
-        avg_px = (self.cash_flow / max(1, self.executed_qty)) if self.executed_qty > 0 else self.arrival_mid
+        avg_px = (
+            (self.cash_flow / max(1, self.executed_qty))
+            if self.executed_qty > 0
+            else self.arrival_mid
+        )
         shortfall_bps = ((avg_px - self.arrival_mid) / self.arrival_mid) * 10_000.0
         reward = -shortfall_bps * 0.01  # scale reward
 

@@ -115,8 +115,8 @@ std::vector<Fill> OrderBook::submit(const Order& order) {
     return fills;
   }
   if (order.type == OrderType::FOK) {
-    const bool can_fill = (order.side == Side::Buy) ? can_fill_all(asks_, order)
-                                                    : can_fill_all(bids_, order);
+    const bool can_fill =
+        (order.side == Side::Buy) ? can_fill_all(asks_, order) : can_fill_all(bids_, order);
     if (!can_fill) {
       last_ts_ = order.ts;
       return fills;

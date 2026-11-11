@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 
 if sys.platform == "win32":
     for _p in (r"C:\msys64\ucrt64\bin", r"C:\msys64\mingw64\bin"):
         if os.path.isdir(_p):
-            try:
+            with contextlib.suppress(OSError):
                 os.add_dll_directory(_p)
-            except OSError:
-                pass
 
 __version__ = "0.1.0"

@@ -1,7 +1,7 @@
-#include "lobx/order_book.hpp"
-
 #include <cassert>
 #include <iostream>
+
+#include "lobx/order_book.hpp"
 
 using namespace lobx;
 

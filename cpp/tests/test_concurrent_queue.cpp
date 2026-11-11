@@ -85,7 +85,8 @@ void test_multi_producer_multi_consumer() {
   q.close();
   for (auto& t : consumers) t.join();
 
-  long long expected_per_producer = static_cast<long long>(kItemsPerProducer) * (kItemsPerProducer + 1) / 2;
+  long long expected_per_producer =
+      static_cast<long long>(kItemsPerProducer) * (kItemsPerProducer + 1) / 2;
   CHECK(sum_consumed.load() == kProducers * expected_per_producer);
   CHECK(q.total_pushed() == static_cast<std::size_t>(kProducers * kItemsPerProducer));
   CHECK(q.total_popped() == static_cast<std::size_t>(kProducers * kItemsPerProducer));

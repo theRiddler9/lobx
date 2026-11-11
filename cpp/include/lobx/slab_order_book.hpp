@@ -31,17 +31,23 @@ struct SlabLevel {
   void append(SlabNode* node) noexcept {
     node->prev = tail;
     node->next = nullptr;
-    if (tail) tail->next = node;
-    else head = node;
+    if (tail)
+      tail->next = node;
+    else
+      head = node;
     tail = node;
     total_qty += node->qty;
   }
 
   void remove(SlabNode* node) noexcept {
-    if (node->prev) node->prev->next = node->next;
-    else head = node->next;
-    if (node->next) node->next->prev = node->prev;
-    else tail = node->prev;
+    if (node->prev)
+      node->prev->next = node->next;
+    else
+      head = node->next;
+    if (node->next)
+      node->next->prev = node->prev;
+    else
+      tail = node->prev;
     total_qty -= node->qty;
   }
 };
@@ -70,8 +76,10 @@ class SlabOrderBook {
     auto [lvl, node] = it->second;
     lvl->remove(node);
     if (lvl->total_qty == 0) {
-      if (node->side == Side::Buy) bids_.erase(node->price);
-      else asks_.erase(node->price);
+      if (node->side == Side::Buy)
+        bids_.erase(node->price);
+      else
+        asks_.erase(node->price);
     }
     pool_.deallocate(node);
     index_.erase(it);

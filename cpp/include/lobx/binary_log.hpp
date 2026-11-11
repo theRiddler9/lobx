@@ -1,9 +1,9 @@
 #pragma once
 
-#include "lobx/order_book.hpp"
-
 #include <cstdint>
 #include <vector>
+
+#include "lobx/order_book.hpp"
 
 namespace lobx {
 

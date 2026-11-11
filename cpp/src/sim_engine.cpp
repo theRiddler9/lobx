@@ -4,8 +4,7 @@
 
 namespace lobx {
 
-CppMarket::CppMarket(SimConfig cfg)
-    : cfg_(cfg), rng_(cfg.seed), last_mid_(cfg.initial_price) {
+CppMarket::CppMarket(SimConfig cfg) : cfg_(cfg), rng_(cfg.seed), last_mid_(cfg.initial_price) {
   // Seed initial agent wakes
   queue_.push({1'000'000, 1, 100});  // Market Maker at 1ms
   for (int i = 0; i < cfg_.num_noise_agents; ++i) {
@@ -33,8 +32,13 @@ void CppMarket::handle_noise(int id) {
   Price px = current_mid() + offset(rng_);
   if (px <= 0) px = 1;
 
-  Order o{next_order_id_++, id, side, otype, otype == OrderType::Market ? std::nullopt : std::make_optional(px),
-          cfg_.trade_size, current_ts_};
+  Order o{next_order_id_++,
+          id,
+          side,
+          otype,
+          otype == OrderType::Market ? std::nullopt : std::make_optional(px),
+          cfg_.trade_size,
+          current_ts_};
   auto fills = book_.submit(o);
   total_orders_++;
   trades_.insert(trades_.end(), fills.begin(), fills.end());
@@ -51,9 +55,11 @@ void CppMarket::handle_mm(int id) {
   Price ask_px = std::max<Price>(bid_px + 1, reservation + cfg_.mm_half_spread);
 
   mm_bid_ = next_order_id_++;
-  auto f1 = book_.submit({mm_bid_, id, Side::Buy, OrderType::Limit, bid_px, cfg_.trade_size, current_ts_});
+  auto f1 = book_.submit(
+      {mm_bid_, id, Side::Buy, OrderType::Limit, bid_px, cfg_.trade_size, current_ts_});
   mm_ask_ = next_order_id_++;
-  auto f2 = book_.submit({mm_ask_, id, Side::Sell, OrderType::Limit, ask_px, cfg_.trade_size, current_ts_});
+  auto f2 = book_.submit(
+      {mm_ask_, id, Side::Sell, OrderType::Limit, ask_px, cfg_.trade_size, current_ts_});
   total_orders_ += 2;
 
   for (const auto& f : f1) mm_inv_ += f.qty;
@@ -67,7 +73,8 @@ void CppMarket::handle_momentum(int id) {
   Price mid = current_mid();
   if (mid != last_mid_) {
     Side side = mid > last_mid_ ? Side::Buy : Side::Sell;
-    Order o{next_order_id_++, id, side, OrderType::Market, std::nullopt, cfg_.trade_size, current_ts_};
+    Order o{next_order_id_++, id,         side, OrderType::Market, std::nullopt,
+            cfg_.trade_size,  current_ts_};
     auto fills = book_.submit(o);
     total_orders_++;
     trades_.insert(trades_.end(), fills.begin(), fills.end());
@@ -82,14 +89,18 @@ bool CppMarket::step() {
   queue_.pop();
   current_ts_ = ev.ts;
 
-  if (ev.type == 0) handle_noise(ev.id);
-  else if (ev.type == 1) handle_mm(ev.id);
-  else if (ev.type == 2) handle_momentum(ev.id);
+  if (ev.type == 0)
+    handle_noise(ev.id);
+  else if (ev.type == 1)
+    handle_mm(ev.id);
+  else if (ev.type == 2)
+    handle_momentum(ev.id);
   return true;
 }
 
 void CppMarket::run() {
-  while (current_ts_ < cfg_.duration_ns && step()) {}
+  while (current_ts_ < cfg_.duration_ns && step()) {
+  }
 }
 
 }  // namespace lobx

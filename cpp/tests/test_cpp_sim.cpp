@@ -1,15 +1,15 @@
-#include "lobx/sim_engine.hpp"
-
 #include <cassert>
 #include <chrono>
 #include <iostream>
+
+#include "lobx/sim_engine.hpp"
 
 using namespace lobx;
 
 void test_sim_run_and_determinism() {
   SimConfig cfg;
   cfg.seed = 12345;
-  cfg.duration_ns = 5'000'000'000ULL; // 5 seconds
+  cfg.duration_ns = 5'000'000'000ULL;  // 5 seconds
 
   // Run 1
   CppMarket sim1(cfg);
@@ -39,7 +39,7 @@ void test_sim_run_and_determinism() {
 void test_sim_performance() {
   SimConfig cfg;
   cfg.seed = 999;
-  cfg.duration_ns = 30'000'000'000ULL; // 30 seconds
+  cfg.duration_ns = 30'000'000'000ULL;  // 30 seconds
 
   auto t0 = std::chrono::steady_clock::now();
   CppMarket sim(cfg);
@@ -50,7 +50,7 @@ void test_sim_performance() {
 
   std::cout << "Simulated 30s (" << sim.total_orders_submitted() << " orders) in " << elapsed_ms
             << " ms\n";
-  assert(elapsed_ms < 500); // Must be ultra-fast (expected < 15ms)
+  assert(elapsed_ms < 500);  // Must be ultra-fast (expected < 15ms)
   std::cout << "test_sim_performance passed\n";
 }
 

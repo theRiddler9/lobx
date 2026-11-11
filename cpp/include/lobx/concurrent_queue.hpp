@@ -23,7 +23,8 @@ class ConcurrentQueue {
   // Blocking push: waits if bounded queue is full until space is freed or closed.
   bool push(T item) {
     std::unique_lock<std::mutex> lock(mutex_);
-    not_full_.wait(lock, [this] { return closed_.load(std::memory_order_relaxed) || !is_full_locked(); });
+    not_full_.wait(lock,
+                   [this] { return closed_.load(std::memory_order_relaxed) || !is_full_locked(); });
     if (closed_.load(std::memory_order_relaxed)) return false;
     queue_.push(std::move(item));
     total_pushed_.fetch_add(1, std::memory_order_relaxed);
@@ -46,7 +47,8 @@ class ConcurrentQueue {
   // Blocking pop: waits until an item is available or queue is closed.
   std::optional<T> pop() {
     std::unique_lock<std::mutex> lock(mutex_);
-    not_empty_.wait(lock, [this] { return closed_.load(std::memory_order_relaxed) || !queue_.empty(); });
+    not_empty_.wait(lock,
+                    [this] { return closed_.load(std::memory_order_relaxed) || !queue_.empty(); });
     return extract_locked(lock);
   }
 
@@ -60,7 +62,9 @@ class ConcurrentQueue {
   template <typename Rep, typename Period>
   std::optional<T> wait_pop_for(const std::chrono::duration<Rep, Period>& timeout) {
     std::unique_lock<std::mutex> lock(mutex_);
-    if (!not_empty_.wait_for(lock, timeout, [this] { return closed_.load(std::memory_order_relaxed) || !queue_.empty(); }))
+    if (!not_empty_.wait_for(lock, timeout, [this] {
+          return closed_.load(std::memory_order_relaxed) || !queue_.empty();
+        }))
       return std::nullopt;
     return extract_locked(lock);
   }
@@ -75,10 +79,20 @@ class ConcurrentQueue {
   }
 
   bool is_closed() const noexcept { return closed_.load(std::memory_order_acquire); }
-  bool empty() const { std::lock_guard<std::mutex> lock(mutex_); return queue_.empty(); }
-  std::size_t size() const { std::lock_guard<std::mutex> lock(mutex_); return queue_.size(); }
-  std::size_t total_pushed() const noexcept { return total_pushed_.load(std::memory_order_relaxed); }
-  std::size_t total_popped() const noexcept { return total_popped_.load(std::memory_order_relaxed); }
+  bool empty() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return queue_.empty();
+  }
+  std::size_t size() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return queue_.size();
+  }
+  std::size_t total_pushed() const noexcept {
+    return total_pushed_.load(std::memory_order_relaxed);
+  }
+  std::size_t total_popped() const noexcept {
+    return total_popped_.load(std::memory_order_relaxed);
+  }
 
  private:
   bool is_full_locked() const noexcept { return capacity_ > 0 && queue_.size() >= capacity_; }

@@ -37,9 +37,10 @@ class FixedPool {
   void deallocate(T* ptr) noexcept {
     if (!ptr) return;
     ptr->~T();
-    auto* slot = reinterpret_cast<Slot*>(ptr);
-    uint32_t idx = static_cast<uint32_t>(slot - slots_);
-    slot->next_free = free_head_;
+    auto* ptr_byte = reinterpret_cast<const std::byte*>(ptr);
+    auto* slots_byte = reinterpret_cast<const std::byte*>(slots_);
+    auto idx = static_cast<uint32_t>((ptr_byte - slots_byte) / sizeof(Slot));
+    slots_[idx].next_free = free_head_;
     free_head_ = idx;
     --active_count_;
   }

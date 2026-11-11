@@ -25,9 +25,7 @@ struct FeatureMatrix {
   std::size_t cols{FeatureCol::Count};
   std::vector<double> data;  // flat row-major: data[r * cols + c]
 
-  [[nodiscard]] double at(std::size_t r, int c) const noexcept {
-    return data[r * cols + c];
-  }
+  [[nodiscard]] double at(std::size_t r, int c) const noexcept { return data[r * cols + c]; }
 };
 
 FeatureMatrix extract_features(const std::vector<Snapshot>& snapshots,

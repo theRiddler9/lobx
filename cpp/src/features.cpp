@@ -55,9 +55,12 @@ FeatureMatrix extract_features(const std::vector<Snapshot>& snapshots,
     row[FeatureCol::Imbalance5] = calc_imbalance(s, 5);
 
     // Mid-price returns
-    if (i >= 1 && !std::isnan(mids[i]) && !std::isnan(mids[i - 1])) row[FeatureCol::MidReturn1] = mids[i] - mids[i - 1];
-    if (i >= 5 && !std::isnan(mids[i]) && !std::isnan(mids[i - 5])) row[FeatureCol::MidReturn5] = mids[i] - mids[i - 5];
-    if (i >= 25 && !std::isnan(mids[i]) && !std::isnan(mids[i - 25])) row[FeatureCol::MidReturn25] = mids[i] - mids[i - 25];
+    if (i >= 1 && !std::isnan(mids[i]) && !std::isnan(mids[i - 1]))
+      row[FeatureCol::MidReturn1] = mids[i] - mids[i - 1];
+    if (i >= 5 && !std::isnan(mids[i]) && !std::isnan(mids[i - 5]))
+      row[FeatureCol::MidReturn5] = mids[i] - mids[i - 5];
+    if (i >= 25 && !std::isnan(mids[i]) && !std::isnan(mids[i - 25]))
+      row[FeatureCol::MidReturn25] = mids[i] - mids[i - 25];
 
     // Trailing trade-flow imbalance via binary search on prefix sums
     auto calc_flow = [&](int64_t win_ns) -> double {

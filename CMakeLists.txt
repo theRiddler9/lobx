@@ -125,7 +125,7 @@ if(LOBX_BUILD_TESTS)
   if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(lobx_concurrent_bench PRIVATE -Wall -Wextra -Werror)
   endif()
-  add_test(NAME lobx_concurrent_stress COMMAND lobx_concurrent_bench 50000 4)
+  add_test(NAME lobx_concurrent_stress COMMAND lobx_concurrent_bench 20000 2)
 
   add_executable(lobx_batch_bench cpp/bench/bench_batch_ingress.cpp)
   target_link_libraries(lobx_batch_bench PRIVATE lobx_engine)

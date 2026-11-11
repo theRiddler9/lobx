@@ -20,10 +20,10 @@ namespace {
 
 using FillTuple =
     std::tuple<std::int64_t, std::int64_t, int, std::int64_t, std::int64_t, std::int64_t>;
-using OrderTuple =
-    std::tuple<std::int64_t, std::int64_t, int, int, std::optional<std::int64_t>, std::int64_t, std::int64_t>;
-using EventTuple =
-    std::tuple<uint64_t, int, std::int64_t, std::int64_t, std::int64_t, std::int64_t, std::int64_t, bool>;
+using OrderTuple = std::tuple<std::int64_t, std::int64_t, int, int, std::optional<std::int64_t>,
+                              std::int64_t, std::int64_t>;
+using EventTuple = std::tuple<uint64_t, int, std::int64_t, std::int64_t, std::int64_t, std::int64_t,
+                              std::int64_t, bool>;
 
 void translate_error(std::exception_ptr error) {
   try {
@@ -59,13 +59,13 @@ std::vector<FillTuple> submit_order_helper(BookType& book, std::int64_t id, std:
 }
 
 template <typename BookType>
-std::vector<FillTuple> submit_many_helper(BookType& book, const std::vector<OrderTuple>& py_orders) {
+std::vector<FillTuple> submit_many_helper(BookType& book,
+                                          const std::vector<OrderTuple>& py_orders) {
   std::vector<lobx::Order> orders;
   orders.reserve(py_orders.size());
   for (const auto& [id, agent, side, type, price, qty, ts] : py_orders) {
-    orders.push_back(lobx::Order{
-        id, agent, side == 0 ? lobx::Side::Buy : lobx::Side::Sell,
-        static_cast<lobx::OrderType>(type), price, qty, ts});
+    orders.push_back(lobx::Order{id, agent, side == 0 ? lobx::Side::Buy : lobx::Side::Sell,
+                                 static_cast<lobx::OrderType>(type), price, qty, ts});
   }
   const std::vector<lobx::Fill> fills = book.submit_many(orders);
   std::vector<FillTuple> out;
@@ -140,15 +140,14 @@ PYBIND11_MODULE(_native, m) {
           },
           py::arg("id"), py::arg("agent"), py::arg("side"), py::arg("type"), py::arg("price"),
           py::arg("qty"), py::arg("ts"))
-      .def("cancel_order", &lobx::ExchangeGateway::cancel_order, py::arg("order_id"),
-           py::arg("ts"), py::arg("agent_id"))
+      .def("cancel_order", &lobx::ExchangeGateway::cancel_order, py::arg("order_id"), py::arg("ts"),
+           py::arg("agent_id"))
       .def(
           "wait_until_processed",
           [](lobx::ExchangeGateway& gw, uint64_t seq, int timeout_ms) {
             return gw.wait_until_processed(seq, std::chrono::milliseconds(timeout_ms));
           },
-          py::arg("seq_id"), py::arg("timeout_ms") = 5000,
-          py::call_guard<py::gil_scoped_release>())
+          py::arg("seq_id"), py::arg("timeout_ms") = 5000, py::call_guard<py::gil_scoped_release>())
       .def("poll_event",
            [](lobx::ExchangeGateway& gw) -> std::optional<EventTuple> {
              auto ev = gw.poll_event();
@@ -173,9 +172,8 @@ PYBIND11_MODULE(_native, m) {
         std::vector<lobx::Fill> fills;
         fills.reserve(py_fills.size());
         for (const auto& [maker, taker, side, px, q, ts] : py_fills) {
-          fills.push_back(lobx::Fill{maker, taker,
-                                    side == 0 ? lobx::Side::Buy : lobx::Side::Sell, px, q,
-                                    ts});
+          fills.push_back(
+              lobx::Fill{maker, taker, side == 0 ? lobx::Side::Buy : lobx::Side::Sell, px, q, ts});
         }
         lobx::FeatureMatrix mat = lobx::extract_features(snaps, fills);
         std::vector<std::vector<double>> out(mat.rows, std::vector<double>(mat.cols));

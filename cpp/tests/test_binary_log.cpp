@@ -1,9 +1,9 @@
-#include "lobx/binary_log.hpp"
-#include "lobx/order_book.hpp"
-
 #include <cassert>
 #include <chrono>
 #include <iostream>
+
+#include "lobx/binary_log.hpp"
+#include "lobx/order_book.hpp"
 
 using namespace lobx;
 

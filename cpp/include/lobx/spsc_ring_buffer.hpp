@@ -1,5 +1,5 @@
-// A lock-free, single-producer single-consumer (SPSC) ring buffer with cache-line padding (alignas(64))
-// to completely eliminate CPU false sharing.
+// A lock-free, single-producer single-consumer (SPSC) ring buffer with cache-line padding
+// (alignas(64)) to completely eliminate CPU false sharing.
 #pragma once
 
 #include <atomic>
@@ -21,7 +21,8 @@ class SpscRingBuffer {
  public:
   SpscRingBuffer() = default;
   ~SpscRingBuffer() {
-    while (try_pop().has_value()) {}
+    while (try_pop().has_value()) {
+    }
   }
 
   SpscRingBuffer(const SpscRingBuffer&) = delete;

@@ -13,8 +13,8 @@ namespace {
 using namespace lobx;
 
 void run_benchmark(std::size_t total_orders, int num_threads) {
-  std::cout << "Benchmarking ExchangeGateway with " << total_orders
-            << " orders across " << num_threads << " producer threads...\n";
+  std::cout << "Benchmarking ExchangeGateway with " << total_orders << " orders across "
+            << num_threads << " producer threads...\n";
 
   ExchangeGateway gateway;
   gateway.start();
@@ -43,13 +43,15 @@ void run_benchmark(std::size_t total_orders, int num_threads) {
   auto producers_done = std::chrono::steady_clock::now();
 
   // Wait until all submitted orders are matched
-  gateway.wait_until_processed(actual_total);
+  gateway.wait_until_processed(actual_total, std::chrono::milliseconds(30000));
   auto all_matched = std::chrono::steady_clock::now();
 
   gateway.stop();
 
-  auto ingress_ms = std::chrono::duration_cast<std::chrono::microseconds>(producers_done - start_time).count();
-  auto total_us = std::chrono::duration_cast<std::chrono::microseconds>(all_matched - start_time).count();
+  auto ingress_ms =
+      std::chrono::duration_cast<std::chrono::microseconds>(producers_done - start_time).count();
+  auto total_us =
+      std::chrono::duration_cast<std::chrono::microseconds>(all_matched - start_time).count();
 
   double total_sec = total_us / 1e6;
   double throughput = actual_total / total_sec;

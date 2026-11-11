@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import unittest
+
 import numpy as np
 
-from lobx.rl.environment import ExecutionEnv, EnvConfig
+from lobx.rl.environment import EnvConfig, ExecutionEnv
 
 
 class TestExecutionEnv(unittest.TestCase):
@@ -15,7 +16,7 @@ class TestExecutionEnv(unittest.TestCase):
         obs, info = env.reset(seed=42)
 
         self.assertIsInstance(obs, np.ndarray)
-        self.assertEqual(obs.shape, (5,))  # [rem_qty_ratio, rem_time_ratio, spread, imbalance, momentum]
+        self.assertEqual(obs.shape, (5,))  # [qty_ratio, time_ratio, spread, imb, mom]
         self.assertTrue(np.isclose(obs[0], 1.0))
         self.assertTrue(np.isclose(obs[1], 1.0))
         self.assertIn("arrival_mid", info)

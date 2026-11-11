@@ -32,10 +32,18 @@ class ConcurrentOrderBook {
   [[nodiscard]] std::size_t resting_orders() const;
 
   // Atomic performance counters (lock-free)
-  [[nodiscard]] uint64_t total_submits() const noexcept { return total_submits_.load(std::memory_order_relaxed); }
-  [[nodiscard]] uint64_t total_cancels() const noexcept { return total_cancels_.load(std::memory_order_relaxed); }
-  [[nodiscard]] uint64_t total_fills() const noexcept { return total_fills_.load(std::memory_order_relaxed); }
-  [[nodiscard]] uint64_t total_traded_volume() const noexcept { return total_traded_volume_.load(std::memory_order_relaxed); }
+  [[nodiscard]] uint64_t total_submits() const noexcept {
+    return total_submits_.load(std::memory_order_relaxed);
+  }
+  [[nodiscard]] uint64_t total_cancels() const noexcept {
+    return total_cancels_.load(std::memory_order_relaxed);
+  }
+  [[nodiscard]] uint64_t total_fills() const noexcept {
+    return total_fills_.load(std::memory_order_relaxed);
+  }
+  [[nodiscard]] uint64_t total_traded_volume() const noexcept {
+    return total_traded_volume_.load(std::memory_order_relaxed);
+  }
 
  private:
   OrderBook book_;

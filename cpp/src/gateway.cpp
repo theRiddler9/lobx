@@ -64,7 +64,11 @@ void ExchangeGateway::run_worker() {
                                           req.agent_id, 0, 0, req.cancel_ts, ok});
     }
 
-    last_processed_seq_.store(req.seq_id, std::memory_order_release);
+    uint64_t curr = last_processed_seq_.load(std::memory_order_relaxed);
+    while (req.seq_id > curr &&
+           !last_processed_seq_.compare_exchange_weak(curr, req.seq_id, std::memory_order_release,
+                                                      std::memory_order_relaxed)) {
+    }
     {
       std::lock_guard<std::mutex> lock(seq_mutex_);
     }

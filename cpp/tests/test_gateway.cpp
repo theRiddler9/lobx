@@ -74,11 +74,17 @@ void test_gateway_multithreaded_clients() {
     clients.emplace_back([&, c]() {
       for (int i = 0; i < kOrdersPerClient; ++i) {
         OrderId id = static_cast<OrderId>(c * 100000 + i + 1);
-        Order o{id, c + 1, (i % 2 == 0) ? Side::Buy : Side::Sell, OrderType::Limit,
-                10000 + (i % 10) * 2, 10, static_cast<Timestamp>(id * 10)};
+        Order o{id,
+                c + 1,
+                (i % 2 == 0) ? Side::Buy : Side::Sell,
+                OrderType::Limit,
+                10000 + (i % 10) * 2,
+                10,
+                static_cast<Timestamp>(id * 10)};
         uint64_t seq = gateway.submit_order(o);
         uint64_t curr = max_seq.load(std::memory_order_relaxed);
-        while (seq > curr && !max_seq.compare_exchange_weak(curr, seq, std::memory_order_relaxed)) {}
+        while (seq > curr && !max_seq.compare_exchange_weak(curr, seq, std::memory_order_relaxed)) {
+        }
       }
     });
   }
