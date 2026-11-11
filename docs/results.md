@@ -437,4 +437,3 @@ Command: `python -m pytest tests/test_rl_env.py tests/test_ppo_agent.py -v`
 - **TWAP Baseline**: 58.42 bps shortfall.
 - **PPO Execution Policy**: **23.10 bps** shortfall (learns to hold during wide spreads and toxic momentum, posting passively when liquidity is deep).
 - **Policy Convergence**: Surpasses aggressive TWAP slicing by **-35.32 bps** and achieves competitive execution within ~0.7 bps of the hand-crafted quote-shading strategy.
-
