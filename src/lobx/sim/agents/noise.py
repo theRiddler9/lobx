@@ -31,6 +31,8 @@ class NoiseTrader:
         pareto_alpha: float = 1.5,
         market_qty_scale: float = 2.0,
         max_open_orders: int = 6,
+        total_duration_ns: int | None = None,
+        u_shape_alpha: float = 0.0,
     ) -> None:
         """Create a noise trader.
 
@@ -38,7 +40,8 @@ class NoiseTrader:
         order is a market order. A limit order is placed ``mean_offset_ticks`` away from the
         reference price on average. Market order sizes follow a Pareto (heavy-tailed) law, scaled
         by ``market_qty_scale`` and capped at ``max_market_qty``. The trader keeps at most
-        ``max_open_orders`` resting orders, retiring the oldest first.
+        ``max_open_orders`` resting orders, retiring the oldest first. If ``u_shape_alpha`` > 0 and
+        ``total_duration_ns`` is provided, arrival intensity follows a U-shaped intraday profile.
         """
         if mean_interval_ns < 1 or max_limit_qty < 1 or max_market_qty < 1 or max_open_orders < 1:
             raise ValueError("interval, quantities and max_open_orders must all be at least 1")
@@ -46,6 +49,8 @@ class NoiseTrader:
             raise ValueError(f"p_market must be between 0 and 1, got {p_market}")
         if mean_offset_ticks < 1.0 or pareto_alpha <= 0.0 or market_qty_scale <= 0.0:
             raise ValueError("mean_offset_ticks must be >= 1, pareto_alpha and scale must be > 0")
+        if u_shape_alpha < 0.0:
+            raise ValueError("u_shape_alpha must not be negative")
         self.agent_id = agent_id
         self.mean_interval_ns = mean_interval_ns
         self.p_market = p_market
@@ -55,6 +60,8 @@ class NoiseTrader:
         self.pareto_alpha = pareto_alpha
         self.market_qty_scale = market_qty_scale
         self.max_open_orders = max_open_orders
+        self.total_duration_ns = total_duration_ns
+        self.u_shape_alpha = u_shape_alpha
 
     def first_wake(self, rng: Generator) -> int:
         """Return the time of the first turn: one random gap after time 0."""
@@ -62,6 +69,12 @@ class NoiseTrader:
 
     def next_wake(self, ts: int, rng: Generator) -> int | None:
         """Return the next turn: one random gap after ``ts``. Noise traders never retire."""
+        if self.u_shape_alpha > 0.0 and self.total_duration_ns is not None:
+            t_mid = self.total_duration_ns / 2.0
+            u = (ts - t_mid) / t_mid
+            scale = 1.0 + self.u_shape_alpha * (u**2)
+            eff_interval = max(1, int(self.mean_interval_ns / scale))
+            return ts + exponential_gap_ns(rng, eff_interval)
         return ts + exponential_gap_ns(rng, self.mean_interval_ns)
 
     def wake(self, ts: int, view: MarketView, rng: Generator) -> list[Action]:

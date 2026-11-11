@@ -41,6 +41,8 @@ class MarketConfig:
     # scale of the heavy-tailed size those market orders are drawn from.
     noise_p_market: float = 0.3
     noise_market_qty_scale: float = 5.0
+    # Intraday volume curve: alpha parameter for U-shaped volume profile. 0.0 means stationary flat.
+    volume_u_shape: float = 0.0
 
     def __post_init__(self) -> None:
         """Reject settings that cannot describe a run, with a message naming the field."""
@@ -65,6 +67,8 @@ class MarketConfig:
             raise ValueError(
                 f"noise_market_qty_scale must be above 0, got {self.noise_market_qty_scale!r}"
             )
+        if isinstance(self.volume_u_shape, bool) or self.volume_u_shape < 0.0:
+            raise ValueError(f"volume_u_shape must be non-negative, got {self.volume_u_shape!r}")
         for name in ("num_market_makers", "num_noise_traders", "num_momentum_traders"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -106,6 +110,8 @@ def build_background_agents(config: MarketConfig) -> list[Agent]:
                 config.noise_interval_ns,
                 p_market=config.noise_p_market,
                 market_qty_scale=config.noise_market_qty_scale,
+                total_duration_ns=config.duration_ns,
+                u_shape_alpha=config.volume_u_shape,
             )
         )
         next_id += 1

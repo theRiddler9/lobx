@@ -46,6 +46,13 @@ flowchart LR
 cancel is O(1). `tests/test_native_differential.py` feeds both engines the same random orders and
 requires identical fills, cancel results, best prices and snapshots.
 
+## Asynchronous Concurrent C++ Gateway
+
+In addition to synchronous matching, `cpp/` provides a multi-threaded asynchronous exchange architecture:
+- `ConcurrentQueue<T>`: thread-safe bounded/unbounded queue using `std::mutex`, `std::condition_variable`, and atomics.
+- `ConcurrentOrderBook`: wraps the engine with `std::shared_mutex` for reader-writer concurrency (exclusive locks for mutating submits/cancels; shared locks for parallel non-blocking snapshot and depth reads) and lock-free atomic trade/volume metrics.
+- `ExchangeGateway`: accepts orders from multiple client threads concurrently, stamps monotonic sequence numbers with `std::atomic<uint64_t>`, feeds an ingress queue, and processes matching on a dedicated worker thread with condition-variable synchronization barriers (`wait_until_processed`) and an egress event stream. See `docs/learn/concurrent-exchange.md`.
+
 ## Why the stages are separate
 
 - **Determinism.** Randomness comes only from seeded streams passed in explicitly, so the same

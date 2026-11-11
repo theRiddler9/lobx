@@ -48,10 +48,15 @@ class EvalConfig:
     # longer than the model's 26-snapshot memory (5.2 s).
     watch_interval_ns: int = 200_000_000
     watch_lookback_ns: int = 6 * NS_PER_S
+    volume_u_shape: float = 0.0
 
     def market_config(self, seed: int) -> MarketConfig:
         """Return the market configuration for ``seed``: it ends when the parent window does."""
-        return MarketConfig(seed=seed, duration_ns=self.start_ns + self.window_ns)
+        return MarketConfig(
+            seed=seed,
+            duration_ns=self.start_ns + self.window_ns,
+            volume_u_shape=self.volume_u_shape,
+        )
 
     def parent(self, agent_id: int) -> ParentOrder:
         """Return the parent order, traded under ``agent_id``."""

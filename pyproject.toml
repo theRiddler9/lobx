@@ -44,6 +44,10 @@ wheel.packages = ["src/lobx"]
 cmake.version = ">=3.18"
 build-dir = "build/{wheel_tag}"
 
+[[tool.scikit-build.overrides]]
+if.platform-system = "win32"
+cmake.args = ["-G", "Ninja"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
