@@ -6,12 +6,20 @@
 namespace lobx {
 
 std::vector<Fill> ConcurrentOrderBook::submit(const Order& order) {
+  // Exclusive lock: no other reader or writer may access book_ during matching.
   std::unique_lock<std::shared_mutex> lock(rw_mutex_);
+
+  // Monotonic timestamp guarantee: in concurrent environments where client threads
+  // submit independently, thread scheduling jitter might cause an order with an earlier
+  // timestamp to arrive after one with a later timestamp. Clamping with last_ts_
+  // prevents backwards time violations in the deterministic engine.
   Timestamp ts = std::max(order.ts, last_ts_);
   last_ts_ = ts;
   Order adj = order;
   adj.ts = ts;
 
+  // std::memory_order_relaxed: metrics update does not establish a happens-before relationship
+  // for any other memory locations.
   total_submits_.fetch_add(1, std::memory_order_relaxed);
   std::vector<Fill> fills = book_.submit(adj);
   if (!fills.empty()) {
@@ -24,6 +32,7 @@ std::vector<Fill> ConcurrentOrderBook::submit(const Order& order) {
 }
 
 std::vector<Fill> ConcurrentOrderBook::submit_many(const std::vector<Order>& orders) {
+  // Exclusive lock held across the entire batch to guarantee atomic batch processing.
   std::unique_lock<std::shared_mutex> lock(rw_mutex_);
   std::vector<Fill> all_fills;
   all_fills.reserve(orders.size() / 2);
@@ -57,6 +66,8 @@ bool ConcurrentOrderBook::cancel(OrderId id, Timestamp ts) {
 }
 
 Snapshot ConcurrentOrderBook::snapshot(std::size_t depth) const {
+  // Shared lock: multiple threads can sample the book snapshot simultaneously
+  // without blocking each other.
   std::shared_lock<std::shared_mutex> lock(rw_mutex_);
   return book_.snapshot(depth);
 }
