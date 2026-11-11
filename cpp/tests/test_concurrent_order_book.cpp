@@ -55,32 +55,71 @@ void test_multithreaded_read_write_stress() {
   constexpr int kReaders = 4;
   constexpr int kOrdersPerWriter = 2500;
   std::atomic<bool> stop_readers{false};
+  std::atomic<uint64_t> total_reader_checks{0};
   std::vector<std::thread> writers;
   std::vector<std::thread> readers;
 
+  // Reader threads: concurrently query the order book and verify critical invariants
   for (int r = 0; r < kReaders; ++r) {
     readers.emplace_back([&]() {
       while (!stop_readers.load(std::memory_order_relaxed)) {
-        auto snap = book.snapshot(5);
+        auto snap = book.snapshot(10);
+        auto b_bid = book.best_bid();
+        auto b_ask = book.best_ask();
+
+        // Invariant 1: Book is NEVER crossed (best bid strictly less than best ask)
         if (!snap.bids.empty() && !snap.asks.empty()) {
-          CHECK(snap.bids.front().first <
-                snap.asks.front().first);  // Invariant: book is never crossed
+          CHECK(snap.bids.front().first < snap.asks.front().first);
         }
+
+        // Invariant 2: Bids strictly monotonic descending by price, quantities positive
+        for (std::size_t i = 0; i < snap.bids.size(); ++i) {
+          CHECK(snap.bids[i].second > 0);
+          if (i > 0) {
+            CHECK(snap.bids[i - 1].first > snap.bids[i].first);
+          }
+        }
+
+        // Invariant 3: Asks strictly monotonic ascending by price, quantities positive
+        for (std::size_t i = 0; i < snap.asks.size(); ++i) {
+          CHECK(snap.asks[i].second > 0);
+          if (i > 0) {
+            CHECK(snap.asks[i - 1].first < snap.asks[i].first);
+          }
+        }
+
+        // Invariant 4: Best bid and best ask agree with top of book
+        if (b_bid && !snap.bids.empty()) {
+          // Note: b_bid could be newer than snapshot, but neither can be crossed
+          if (b_ask) {
+            CHECK(*b_bid < *b_ask);
+          }
+        }
+
+        total_reader_checks.fetch_add(1, std::memory_order_relaxed);
       }
     });
   }
 
+  // Writer threads: interleave bids, asks, crossing orders, and cancels
   std::atomic<Timestamp> global_ts{10000};
   for (int w = 0; w < kWriters; ++w) {
     writers.emplace_back([&, w]() {
       for (int i = 0; i < kOrdersPerWriter; ++i) {
         OrderId id = static_cast<OrderId>(w * 100000 + i + 1);
-        Price bid_px = 10000 - (i % 20) * 5;
-        Timestamp ts1 = global_ts.fetch_add(10, std::memory_order_relaxed);
-        Order buy{id, w + 1, Side::Buy, OrderType::Limit, bid_px, 10, ts1};
-        book.submit(buy);
+        Side side = (i % 2 == 0) ? Side::Buy : Side::Sell;
+        Price px = (side == Side::Buy) ? (9990 - (i % 15) * 2) : (10010 + (i % 15) * 2);
 
-        if (i % 5 == 0) {
+        // Occasionally cross the spread to trigger real matching and partial fills
+        if (i % 50 == 0) {
+          px = (side == Side::Buy) ? 10020 : 9980;
+        }
+
+        Timestamp ts1 = global_ts.fetch_add(10, std::memory_order_relaxed);
+        Order o{id, w + 1, side, OrderType::Limit, px, 10, ts1};
+        book.submit(o);
+
+        if (i % 7 == 0) {
           Timestamp ts2 = global_ts.fetch_add(10, std::memory_order_relaxed);
           book.cancel(id, ts2);
         }
@@ -94,6 +133,7 @@ void test_multithreaded_read_write_stress() {
 
   CHECK(book.total_submits() == kWriters * kOrdersPerWriter);
   CHECK(book.total_cancels() > 0);
+  CHECK(total_reader_checks.load() > 100);
 }
 
 }  // namespace

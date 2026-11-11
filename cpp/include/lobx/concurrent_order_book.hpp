@@ -1,4 +1,24 @@
-// A thread-safe order book wrapper using shared_mutex and atomic metrics.
+// A thread-safe, reader-writer locked order book wrapper using std::shared_mutex
+// and lock-free atomic telemetry counters.
+//
+// CONCURRENCY DESIGN RATIONALE:
+// In limit order book architectures, query operations (such as sampling book depth,
+// checking best bid/ask, and streaming level snapshots to market makers or feature pipelines)
+// occur at much higher frequencies than order insertions and cancellations.
+//
+// 1. std::shared_mutex vs std::mutex:
+//    Using a traditional std::mutex would force all concurrent reader threads (e.g. 16 market
+//    data subscribers) to serialize behind each other, causing massive lock contention and cache
+//    invalidations. std::shared_mutex enables multiple readers to concurrently hold shared locks
+//    (std::shared_lock) without contention, while writers acquire an exclusive lock
+//    (std::unique_lock) guaranteeing complete data isolation during matching and book mutation.
+//
+// 2. Memory Ordering on Telemetry Counters:
+//    Counters such as total_submits_, total_cancels_, and total_fills_ are updated with
+//    std::memory_order_relaxed. Why relaxed? Because these counters track statistical metrics
+//    independently. They do not guard any shared memory or establish synchronization barriers
+//    between threads (unlike flags or pointers), so relaxed ordering provides the highest
+//    possible instruction-level throughput without unnecessary CPU store buffers or memory fences.
 #pragma once
 
 #include <atomic>
@@ -20,18 +40,21 @@ class ConcurrentOrderBook {
   ConcurrentOrderBook(const ConcurrentOrderBook&) = delete;
   ConcurrentOrderBook& operator=(const ConcurrentOrderBook&) = delete;
 
-  // Exclusive lock for mutating operations
+  // Mutating operations: acquire exclusive lock (std::unique_lock) so no reader
+  // or other writer observes intermediate book states or partial fills.
   std::vector<Fill> submit(const Order& order);
   std::vector<Fill> submit_many(const std::vector<Order>& orders);
   bool cancel(OrderId id, Timestamp ts);
 
-  // Shared lock for concurrent read-only queries
+  // Read-only queries: acquire shared lock (std::shared_lock) allowing concurrent reads.
   [[nodiscard]] Snapshot snapshot(std::size_t depth) const;
   [[nodiscard]] std::optional<Price> best_bid() const;
   [[nodiscard]] std::optional<Price> best_ask() const;
   [[nodiscard]] std::size_t resting_orders() const;
 
-  // Atomic performance counters (lock-free)
+  // Lock-free performance counters.
+  // std::memory_order_relaxed is sufficient here because these counters are purely diagnostic
+  // and do not synchronize or order other memory accesses.
   [[nodiscard]] uint64_t total_submits() const noexcept {
     return total_submits_.load(std::memory_order_relaxed);
   }
