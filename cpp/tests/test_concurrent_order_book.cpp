@@ -62,10 +62,9 @@ void test_multithreaded_read_write_stress() {
     readers.emplace_back([&]() {
       while (!stop_readers.load(std::memory_order_relaxed)) {
         auto snap = book.snapshot(5);
-        auto bid = book.best_bid();
-        auto ask = book.best_ask();
-        if (bid.has_value() && ask.has_value()) {
-          CHECK(*bid < *ask);  // Invariant: book is never crossed
+        if (!snap.bids.empty() && !snap.asks.empty()) {
+          CHECK(snap.bids.front().first <
+                snap.asks.front().first);  // Invariant: book is never crossed
         }
       }
     });

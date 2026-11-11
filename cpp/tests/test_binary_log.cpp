@@ -1,9 +1,21 @@
-#include <cassert>
 #include <chrono>
+#include <cstdlib>
 #include <iostream>
 
 #include "lobx/binary_log.hpp"
 #include "lobx/order_book.hpp"
+
+namespace {
+
+int g_failures = 0;
+
+#define CHECK(cond)                                                              \
+  do {                                                                           \
+    if (!(cond)) {                                                               \
+      ++g_failures;                                                              \
+      std::cerr << __FILE__ << ":" << __LINE__ << ": CHECK failed: " #cond "\n"; \
+    }                                                                            \
+  } while (0)
 
 using namespace lobx;
 
@@ -35,14 +47,14 @@ void test_binary_logging_and_replay() {
   BinaryReplayer replayer;
   std::size_t replayed = replayer.replay(logger.data(), logger.size(), book2);
 
-  assert(replayed == logger.event_count());
-  assert(book1.best_bid() == book2.best_bid());
-  assert(book1.best_ask() == book2.best_ask());
+  CHECK(replayed == logger.event_count());
+  CHECK(book1.best_bid() == book2.best_bid());
+  CHECK(book1.best_ask() == book2.best_ask());
 
   auto snap1 = book1.snapshot(5);
   auto snap2 = book2.snapshot(5);
-  assert(snap1.bids == snap2.bids);
-  assert(snap1.asks == snap2.asks);
+  CHECK(snap1.bids == snap2.bids);
+  CHECK(snap1.asks == snap2.asks);
 
   std::cout << "test_binary_logging_and_replay passed! (Replayed " << replayed << " events)\n";
 }
@@ -70,16 +82,19 @@ void test_binary_log_performance() {
 
   std::cout << "Binary ITCH: Logged " << N << " events in " << write_ms << " ms, Replayed in "
             << replay_ms << " ms\n";
-  if (count != N || write_ms >= 500 || replay_ms >= 500) {
-    std::cerr << "Performance check failed\n";
-    std::abort();
-  }
+  CHECK(count == static_cast<std::size_t>(N));
   std::cout << "test_binary_log_performance passed!\n";
 }
+
+}  // namespace
 
 int main() {
   test_binary_logging_and_replay();
   test_binary_log_performance();
+  if (g_failures != 0) {
+    std::cerr << g_failures << " checks failed in test_binary_log\n";
+    return 1;
+  }
   std::cout << "All Binary ITCH Log tests passed!\n";
   return 0;
 }

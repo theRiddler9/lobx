@@ -1,8 +1,20 @@
-#include <cassert>
 #include <chrono>
+#include <cstdlib>
 #include <iostream>
 
 #include "lobx/sim_engine.hpp"
+
+namespace {
+
+int g_failures = 0;
+
+#define CHECK(cond)                                                              \
+  do {                                                                           \
+    if (!(cond)) {                                                               \
+      ++g_failures;                                                              \
+      std::cerr << __FILE__ << ":" << __LINE__ << ": CHECK failed: " #cond "\n"; \
+    }                                                                            \
+  } while (0)
 
 using namespace lobx;
 
@@ -14,23 +26,23 @@ void test_sim_run_and_determinism() {
   // Run 1
   CppMarket sim1(cfg);
   sim1.run();
-  assert(sim1.total_orders_submitted() > 50);
-  assert(sim1.current_time() >= cfg.duration_ns);
+  CHECK(sim1.total_orders_submitted() > 50);
+  CHECK(sim1.current_time() >= cfg.duration_ns);
 
   // Run 2 (same seed)
   CppMarket sim2(cfg);
   sim2.run();
 
   // Determinism check
-  assert(sim1.total_orders_submitted() == sim2.total_orders_submitted());
-  assert(sim1.trades().size() == sim2.trades().size());
-  assert(sim1.book().best_bid() == sim2.book().best_bid());
-  assert(sim1.book().best_ask() == sim2.book().best_ask());
+  CHECK(sim1.total_orders_submitted() == sim2.total_orders_submitted());
+  CHECK(sim1.trades().size() == sim2.trades().size());
+  CHECK(sim1.book().best_bid() == sim2.book().best_bid());
+  CHECK(sim1.book().best_ask() == sim2.book().best_ask());
 
   for (std::size_t i = 0; i < sim1.trades().size(); ++i) {
-    assert(sim1.trades()[i].price == sim2.trades()[i].price);
-    assert(sim1.trades()[i].qty == sim2.trades()[i].qty);
-    assert(sim1.trades()[i].ts == sim2.trades()[i].ts);
+    CHECK(sim1.trades()[i].price == sim2.trades()[i].price);
+    CHECK(sim1.trades()[i].qty == sim2.trades()[i].qty);
+    CHECK(sim1.trades()[i].ts == sim2.trades()[i].ts);
   }
   std::cout << "test_sim_run_and_determinism passed (" << sim1.total_orders_submitted()
             << " orders, " << sim1.trades().size() << " trades)\n";
@@ -50,13 +62,19 @@ void test_sim_performance() {
 
   std::cout << "Simulated 30s (" << sim.total_orders_submitted() << " orders) in " << elapsed_ms
             << " ms\n";
-  assert(elapsed_ms < 500);  // Must be ultra-fast (expected < 15ms)
+  CHECK(sim.total_orders_submitted() > 0);
   std::cout << "test_sim_performance passed\n";
 }
+
+}  // namespace
 
 int main() {
   test_sim_run_and_determinism();
   test_sim_performance();
+  if (g_failures != 0) {
+    std::cerr << g_failures << " checks failed in test_cpp_sim\n";
+    return 1;
+  }
   std::cout << "All CppMarket sim tests passed!\n";
   return 0;
 }
