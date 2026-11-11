@@ -64,6 +64,18 @@ class StrategyAgent:
         return self._strategy.step(ts, view)
 
     def next_wake(self, ts: int, rng: Generator) -> int | None:
-        """Return the next slice start, or ``None`` after the last slice."""
+        """Return the next slice start, a final sweep wake, or ``None``."""
         following = ts + self._interval
-        return following if following < self.parent.end_ns else None
+        if following < self.parent.end_ns:
+            return following
+        # If the regular schedule has reached the end of slices but there is still time
+        # before the deadline, retry every 1 second (or 100ms before end) so any unfilled
+        # remainder from thin book depth is swept before the parent window closes.
+        if self._interval >= 1_000_000_000:
+            retry = ts + 1_000_000_000
+            if retry < self.parent.end_ns:
+                return retry
+        sweep_ts = self.parent.end_ns - 100_000_000
+        if ts < sweep_ts:
+            return sweep_ts
+        return None

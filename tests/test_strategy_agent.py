@@ -64,3 +64,17 @@ def test_the_lookback_cannot_start_before_time_zero() -> None:
     parent = ParentOrder(5, Side.SELL, 100, start_ns=30, end_ns=130)
     agent = StrategyAgent(TwapStrategy(2), parent, 2, wake_interval_ns=10, lookback_ns=500)
     assert agent.first_wake(RNG) == 0
+
+
+def test_macro_interval_strategy_schedules_deadline_sweep_wakes() -> None:
+    # 30-second window, 2 slices -> 15-second interval
+    parent = ParentOrder(5, Side.SELL, 100, start_ns=0, end_ns=30_000_000_000)
+    agent = StrategyAgent(TwapStrategy(2), parent, 2)
+    times = [agent.first_wake(RNG)]
+    while (following := agent.next_wake(times[-1], RNG)) is not None:
+        times.append(following)
+    # Wakes at 0s, 15s (regular slices), then retries every 1s from 16s..29s and sweeps at 29.9s
+    assert times[0] == 0
+    assert times[1] == 15_000_000_000
+    assert times[2] == 16_000_000_000
+    assert times[-1] == 29_900_000_000
