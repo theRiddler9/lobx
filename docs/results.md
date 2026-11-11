@@ -299,6 +299,57 @@ Step 4 caveat: the "at least 10x" target holds for the engine in pure C++ and do
 end-to-end from Python (see README, "What failed").
 
 
+## Phase A: C++ batch API — `submit_many` end-to-end speedup
+
+Machine: Windows 11, AMD Ryzen 9 7940HS, Python 3.15.2 (same developer
+machine; for Linux production numbers rerun the benchmark on a quiet host).
+
+Command: `python benchmarks/bench_submit_many.py --ops 200000 --batch-size 500`
+
+Stream composition: ~70% limit orders, ~15% market orders (the cancel-only ops
+are dropped from the batch test; only `Order` ops are submitted).
+Orders counted: 140,267 of 200,000 generated ops.
+
+| mode | ops/s | median ns/order | p99 ns/order | speedup vs python-seq |
+|---|---:|---:|---:|---:|
+| python-seq | 427,735 | 1,600 | 7,000 | 1.0× |
+| native-seq | 702,334 | 1,100 | 3,500 | 1.6× |
+| native-batch (size=100) | 1,202,687 | 766 | 1,296 | 2.7× |
+| native-batch (size=500) | 1,231,512 | 763 | 1,179 | **2.9×** |
+| native-batch (size=1000) | 1,244,097 | 761 | 1,025 | **2.9×** |
+
+Note: batch latency is the per-order average across each chunk (elapsed_chunk /
+chunk_size), not a per-call p99. It represents how much time the C++ engine
+spent matching each order on average when the per-order boundary cost was
+amortized.
+
+### Reading the numbers
+
+- **Batch vs. sequential native: 1.75×.** The boundary is paid once per batch.
+  At batch size 500 each order pays ~760 ns instead of ~1,100 ns.
+- **Batch vs. Python sequential: 2.9×.** Still below the 10× target cited in
+  AGENTS.md. That target was for the pure C++ engine vs. the Python engine,
+  not for the end-to-end Python→C++→Python path.
+- **Diminishing returns above batch size ~500.** The speedup from 500 to 1,000
+  is under 1%. The fixed boundary cost is already small relative to the
+  matching work at 500 orders.
+- **p99 drops sharply with batching.** The 500-order batch p99 (1,179 ns
+  per order) is 3× lower than native-seq p99 (3,500 ns). Tail latency improves
+  more than mean latency because the occasional slow Python→C++ transitions
+  are amortized inside the batch.
+
+### Differential test
+
+Command: `pytest tests/test_batch_submit_many.py -v`
+
+23 tests: 10 parametrized seeds × 2,000 ops (fills match), 5 seeds × 2,000
+ops (book state match), 1 × 100,000 orders, and 7 edge cases (empty batch,
+single order, self-crossing, partial fill, market order, all-resting, snapshot
+idempotence). All 23 passed.
+
+A mutation test: changing the loop in `submit_many_helper` to process orders
+in reverse fails the differential test within the first parametrized seed.
+
 ## Phase B: C++ concurrency, gateways, and parallel simulation benchmarks
 
 Machine: Windows 11, AMD Ryzen 9 7940HS, g++ 15.2.0 (CMake Release with Ninja).
