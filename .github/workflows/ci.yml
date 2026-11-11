@@ -70,6 +70,18 @@ jobs:
           cmake --build build/san
           ctest --test-dir build/san --output-on-failure
 
+  tsan:
+    name: C++ ThreadSanitizer (TSan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and run concurrency tests under ThreadSanitizer
+        run: |
+          cmake -S . -B build/tsan -DLOBX_BUILD_TESTS=ON -DLOBX_TSAN=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build build/tsan
+          ctest --test-dir build/tsan -R "concurrent|gateway|spsc|thread_pool" --output-on-failure
+
   docker:
     name: Docker build & service test
     runs-on: ubuntu-latest
