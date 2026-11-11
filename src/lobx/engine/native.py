@@ -74,6 +74,47 @@ class NativeOrderBook:
             for maker, taker, side, price, qty, ts in raw
         ]
 
+    def submit_many(self, orders: list[Order]) -> list[Fill]:
+        """Submit a batch of orders to the C++ engine without per-order GIL overhead.
+
+        The GIL is released for the entire C++ matching loop via
+        ``py::call_guard<py::gil_scoped_release>()`` in bindings.cpp.  Python
+        only pays the boundary cost once per batch instead of once per order.
+
+        Orders are processed in list order (identical to calling submit() one
+        at a time).  Fills from all orders are concatenated and returned.
+
+        This method is equivalent to::
+
+            fills = []
+            for o in orders:
+                fills.extend(book.submit(o))
+
+        but with substantially lower boundary overhead for large batches.
+        """
+        # Build the flat tuple list the C++ extension expects: each element is
+        # (order_id, agent_id, side_int, type_int, price_or_None, qty, ts).
+        # Side 0 = BUY, 1 = SELL (matches the C++ enum values in types.hpp).
+        py_orders = [
+            (
+                o.order_id,
+                o.agent_id,
+                0 if o.side is Side.BUY else 1,
+                self._TYPE_MAP.get(o.type, 0),
+                o.price,
+                o.qty,
+                o.ts,
+            )
+            for o in orders
+        ]
+        # submit_many releases the GIL inside C++ and returns a list of fill
+        # tuples: (maker_id, taker_id, taker_side_int, price, qty, ts).
+        raw = self._book.submit_many(py_orders)
+        return [
+            Fill(maker, taker, Side.BUY if side == 0 else Side.SELL, price, qty, ts)
+            for maker, taker, side, price, qty, ts in raw
+        ]
+
     def cancel(self, order_id: int, ts: int) -> bool:
         """Remove a resting order; return ``True`` if it was resting."""
         return self._book.cancel(order_id, ts)
