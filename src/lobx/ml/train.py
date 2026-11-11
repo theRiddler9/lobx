@@ -43,7 +43,7 @@ def train_models(
     validation_seeds: Sequence[int],
     config: DataConfig | None = None,
     engine: EngineFactory | None = None,
-    include_mlp: bool = True,
+    include_mlp: bool = False,
 ) -> TrainedModels:
     """Fit the naive, logistic, LightGBM, and optional MLP models.
 
