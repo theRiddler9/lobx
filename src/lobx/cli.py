@@ -19,6 +19,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from lobx.data.lobster import iter_lobster_messages
 from lobx.engine.book_py import PythonOrderBook
 from lobx.engine.event_log import EventLog
 from lobx.engine.native import NativeOrderBook
@@ -137,10 +138,14 @@ def _cmd_replay_lobster(args: argparse.Namespace) -> int:
     book: OrderBook = NativeOrderBook() if args.engine == "native" else PythonOrderBook()
     strategy = None
     parent = None
+    wake_interval = 1_000_000_000
     if args.strategy == "twap":
         strategy = TwapStrategy(num_slices=args.slices)
-        start_ns = 0
-        end_ns = 3600 * NS_PER_S
+        msgs = list(iter_lobster_messages(args.message))
+        start_ns = msgs[0].ts_ns if msgs else 0
+        end_ns = msgs[-1].ts_ns if msgs else start_ns + 3600 * NS_PER_S
+        if end_ns <= start_ns:
+            end_ns = start_ns + 1_000_000_000
         parent = ParentOrder(
             agent_id=1,
             side=Side.SELL if args.side == "sell" else Side.BUY,
@@ -148,6 +153,7 @@ def _cmd_replay_lobster(args: argparse.Namespace) -> int:
             start_ns=start_ns,
             end_ns=end_ns,
         )
+        wake_interval = max(1, (end_ns - start_ns) // max(1, args.slices))
 
     market = ReplayMarket(
         message_path=args.message,
@@ -155,6 +161,7 @@ def _cmd_replay_lobster(args: argparse.Namespace) -> int:
         book=book,
         strategy=strategy,
         parent=parent,
+        wake_interval_ns=wake_interval,
     )
     result = market.run()
     print(f"replayed {result.events_replayed} historical events from {args.message}")
