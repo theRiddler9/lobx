@@ -25,7 +25,7 @@ from lobx.service.jobs import ComparisonJob, RunJob
 from lobx.service.schemas import FillOut, PairRow, RunResult, StrategyRow
 from lobx.sim.agents.recorder import SnapshotRecorder
 from lobx.sim.clock import NS_PER_S
-from lobx.types import Side
+from lobx.types import Fill, Side
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,11 @@ class ExecutionService:
                 job.recorder = SnapshotRecorder(agent_id, SNAPSHOT_INTERVAL_NS, SNAPSHOT_DEPTH)
                 return job.recorder
 
+            all_market_fills = []
+
+            def on_fill(fill: Fill, maker_agent: int, taker_agent: int) -> None:
+                all_market_fills.append(fill)
+
             detail = run_detailed(
                 self._factory(request.strategy),
                 request.seed,
@@ -84,8 +89,11 @@ class ExecutionService:
                 self.engine,
                 watching=request.strategy in WATCHING,
                 observer=make_recorder,
+                on_fill=on_fill,
             )
             outcome = detail.result
+            job.market_fills = all_market_fills
+            job.strategy_fills = list(detail.fills)
             job.result = RunResult(
                 executed=outcome.executed,
                 shortfall_bps=outcome.shortfall_bps,
