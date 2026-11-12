@@ -96,6 +96,7 @@ def run_detailed(
     engine: EngineFactory | None = None,
     watching: bool = False,
     observer: ObserverFactory | None = None,
+    on_fill: Callable[[Fill, int, int], None] | None = None,
 ) -> RunDetail:
     """Run a fresh strategy on the market for ``seed``; return its shortfall and its fills.
 
@@ -123,6 +124,8 @@ def run_detailed(
     own_fills: list[Fill] = []
 
     def collect(fill: Fill, maker_agent: int, taker_agent: int) -> None:
+        if on_fill is not None:
+            on_fill(fill, maker_agent, taker_agent)
         if parent.agent_id in (maker_agent, taker_agent):
             own_fills.append(fill)
 

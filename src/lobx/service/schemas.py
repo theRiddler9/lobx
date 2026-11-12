@@ -111,3 +111,78 @@ class HealthInfo(BaseModel):
     status: Literal["ok"] = "ok"
     engine: Literal["native", "python"]
     model_available: bool
+
+
+class CandleBarOut(BaseModel):
+    """Aggregated OHLCV and volume delta candle bar."""
+
+    time: int
+    open: int
+    high: int
+    low: int
+    close: int
+    volume: int
+    buy_volume: int
+    sell_volume: int
+    volume_delta: int
+    cvd: int
+    trade_count: int
+    vwap: float
+
+
+class ExecutionDecompositionOut(BaseModel):
+    """Microstructural decomposition of an execution fill."""
+
+    fill_ts: int
+    fill_price: int
+    qty: int
+    arrival_mid: float
+    future_mid: float
+    effective_spread_bps: float
+    realized_spread_bps: float
+    price_impact_bps: float
+
+
+class MicropricePointOut(BaseModel):
+    """Stoikov analytical micro-price point."""
+
+    time: int
+    microprice: float
+
+
+class VpinPointOut(BaseModel):
+    """VPIN toxicity calculation point."""
+
+    ts: int
+    vpin: float
+    bucket_index: int
+
+
+class MicrostructureOut(BaseModel):
+    """Microstructure analytics: flow toxicity, spread decomposition, and microprice series."""
+
+    vpin_series: list[VpinPointOut]
+    mean_vpin: float
+    spread_decomposition: list[ExecutionDecompositionOut]
+    mean_effective_spread_bps: float
+    mean_realized_spread_bps: float
+    mean_price_impact_bps: float
+    microprices: list[MicropricePointOut]
+
+
+class HeatmapLevelOut(BaseModel):
+    """Depth level item in heatmap."""
+
+    price: int
+    qty: int
+    side: str
+
+
+class HeatmapSnapshotOut(BaseModel):
+    """Depth-of-market liquidity snapshot."""
+
+    time: int
+    ts_ns: int
+    best_bid: int | None
+    best_ask: int | None
+    levels: list[HeatmapLevelOut]

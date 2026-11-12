@@ -39,3 +39,15 @@ def test_a_comparison_shows_both_tables(monkeypatch: pytest.MonkeyPatch, server_
     assert not page.exception and not page.error
     assert len(page.dataframe) == 2  # per-strategy table and paired table
     assert "95% CI (bps)" in page.dataframe[0].value.columns
+
+
+def test_market_study_tab_runs_and_displays_analytics(
+    monkeypatch: pytest.MonkeyPatch, server_url: str
+) -> None:
+    monkeypatch.setenv("LOBX_API_URL", server_url)
+    page = AppTest.from_file(DASHBOARD, default_timeout=120).run()
+    assert not page.exception
+    page.button[2].click().run()
+    assert not page.exception and not page.error
+    labels = {metric.label for metric in page.metric}
+    assert {"Implementation Shortfall", "VPIN Flow Toxicity", "Cumulative Volume Delta"} <= labels
