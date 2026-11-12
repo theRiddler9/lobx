@@ -14,6 +14,7 @@ from typing import Any
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 from lobx.service.client import ApiClient, ApiError, depth_rows, spread_of
 from lobx.sim.clock import NS_PER_S
@@ -130,6 +131,117 @@ def comparison_tab(client: ApiClient) -> None:
     st.caption("Simulated market, simple agents. A confidence interval that contains 0 is a tie.")
 
 
+def market_study_tab(client: ApiClient) -> None:
+    """Analyze order flow dynamics, microstructure, and view interactive TradingView charts."""
+    with st.form("market_study_form"):
+        left, right = st.columns(2)
+        strategy = left.selectbox("Execution Strategy", STRATEGIES, key="ms_strat")
+        side = right.radio("Side", ["sell", "buy"], horizontal=True, key="ms_side")
+        seed = left.number_input("Market Seed", min_value=0, value=1000, step=1, key="ms_seed")
+        quantity = right.number_input(
+            "Order Size (shares)",
+            min_value=1,
+            max_value=20_000,
+            value=3_000,
+            step=100,
+            key="ms_qty",
+        )
+        bar_duration = st.slider("Candle Bar Duration (seconds)", 1, 30, 5, key="ms_bar_dur")
+        submitted = st.form_submit_button("Run & Analyze Market")
+
+    if not submitted:
+        st.info(
+            "Select parameters and click *Run & Analyze Market* to generate institutional "
+            "microstructure analytics and interactive TradingView charts."
+        )
+        return
+
+    try:
+        run = client.start_run(
+            {"strategy": strategy, "seed": seed, "parent_qty": quantity, "side": side}
+        )
+        with st.spinner("Simulating market and calculating microstructure metrics..."):
+            info = client.get_run(run["id"])
+            while info["status"] not in ("done", "failed"):
+                time.sleep(0.5)
+                info = client.get_run(run["id"])
+
+        if info["status"] == "failed":
+            st.error(f"Run failed: {info['error']}")
+            return
+
+        result = info["result"]
+        chart_html = client.get_chart_html(run["id"], duration_s=bar_duration)
+        micro = client.get_microstructure(run["id"])
+        bars = client.get_bars(run["id"], duration_s=bar_duration)
+
+        # 1. Headline Metrics
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric(
+            "Implementation Shortfall",
+            f"{result['shortfall_bps']:.2f} bps"
+            if result["shortfall_bps"] is not None
+            else "Incomplete",
+        )
+        vpin = float(micro.get("mean_vpin", 0.0))
+        c2.metric(
+            "VPIN Flow Toxicity",
+            f"{vpin:.3f}",
+            delta="High Toxicity" if vpin > 0.4 else "Normal Flow",
+            delta_color="inverse" if vpin > 0.4 else "normal",
+        )
+        final_cvd = bars[-1]["cvd"] if bars else 0
+        c3.metric("Cumulative Volume Delta", f"{final_cvd:+,d} shares")
+        c4.metric(
+            "Avg Price Impact",
+            f"{float(micro.get('mean_price_impact_bps', 0.0)):.2f} bps",
+        )
+
+        # 2. Interactive TradingView Chart
+        st.subheader("Interactive TradingView Execution Tape & Flow Chart")
+        st.caption(
+            "Candlestick OHLCV + Bottom Pane Cumulative Volume Delta (CVD) + "
+            "Stoikov Micro-price (dotted blue) + Execution Markers (green/red arrows)"
+        )
+        components.html(chart_html, height=620)
+
+        # 3. Microstructural Execution Decomposition
+        st.subheader("Microstructural Spread Decomposition")
+        decomp_rows = micro.get("spread_decomposition", [])
+        if decomp_rows:
+            df_decomp = pd.DataFrame(decomp_rows)
+            st.dataframe(
+                df_decomp[
+                    [
+                        "fill_ts",
+                        "fill_price",
+                        "qty",
+                        "arrival_mid",
+                        "effective_spread_bps",
+                        "realized_spread_bps",
+                        "price_impact_bps",
+                    ]
+                ],
+                width="stretch",
+            )
+            col_a, col_b, col_c = st.columns(3)
+            col_a.metric(
+                "Mean Effective Spread",
+                f"{float(micro.get('mean_effective_spread_bps', 0.0)):.2f} bps",
+            )
+            col_b.metric(
+                "Mean Realized Spread",
+                f"{float(micro.get('mean_realized_spread_bps', 0.0)):.2f} bps",
+            )
+            col_c.metric(
+                "Mean Adverse Selection",
+                f"{float(micro.get('mean_price_impact_bps', 0.0)):.2f} bps",
+            )
+
+    except ApiError as error:
+        st.error(str(error))
+
+
 def main() -> None:
     """Draw the page."""
     st.set_page_config(page_title="LOBX", layout="wide")
@@ -149,11 +261,15 @@ def main() -> None:
         return
     st.sidebar.write(f"engine: **{health['engine']}**")
     st.sidebar.write(f"model: **{'ready' if health['model_available'] else 'not trained'}**")
-    live, comparison = st.tabs(["Live book", "Strategy comparison"])
+    live, comparison, market_study = st.tabs(
+        ["Live book", "Strategy comparison", "Market Study (TradingView)"]
+    )
     with live:
         live_book_tab(client)
     with comparison:
         comparison_tab(client)
+    with market_study:
+        market_study_tab(client)
 
 
 main()

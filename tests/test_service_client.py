@@ -33,6 +33,20 @@ def test_the_client_runs_a_whole_run_over_real_http_and_websocket(api: ApiClient
     assert done["status"] == "done"
     assert api.get_run(run["id"])["result"] == done["result"]
 
+    bars = api.get_bars(run["id"], duration_s=5)
+    assert len(bars) > 0
+    assert "cvd" in bars[0]
+
+    micro = api.get_microstructure(run["id"])
+    assert "mean_vpin" in micro
+    assert "microprices" in micro
+
+    html = api.get_chart_html(run["id"], duration_s=5)
+    assert "LightweightCharts" in html
+
+    heat = api.get_heatmap(run["id"], sample_stride=2, max_depth=5)
+    assert len(heat) > 0
+
 
 def test_the_client_runs_a_comparison(api: ApiClient) -> None:
     started = api.start_comparison({"strategies": ["twap", "passive"], "seeds": 3})
