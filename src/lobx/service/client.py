@@ -72,6 +72,36 @@ class ApiClient:
         """Return ``GET /comparisons/{id}``."""
         return self._call("GET", f"/comparisons/{comparison_id}")
 
+    def get_bars(self, run_id: str, duration_s: int = 5) -> list[dict[str, Any]]:
+        """Return aggregated OHLCV + CVD candle bars."""
+        result = self._call("GET", f"/runs/{run_id}/bars?duration_s={duration_s}")
+        return result if isinstance(result, list) else []
+
+    def get_microstructure(self, run_id: str) -> JSON:
+        """Return microstructure analytics (VPIN, spread decomposition, microprice)."""
+        return self._call("GET", f"/runs/{run_id}/microstructure")
+
+    def get_chart_html(self, run_id: str, duration_s: int = 5) -> str:
+        """Return standalone TradingView Lightweight Charts HTML for the run."""
+        url = f"{self.base_url}/runs/{run_id}/chart?duration_s={duration_s}"
+        request = urllib.request.Request(url, method="GET")
+        try:
+            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_S) as response:
+                return str(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as error:
+            raise ApiError(f"GET /runs/{run_id}/chart: {error.code} {_detail(error)}") from error
+        except urllib.error.URLError as error:
+            raise ApiError(f"cannot reach {self.base_url}: {error.reason}") from error
+
+    def get_heatmap(
+        self, run_id: str, sample_stride: int = 1, max_depth: int = 5
+    ) -> list[dict[str, Any]]:
+        """Return depth heatmap snapshots."""
+        result = self._call(
+            "GET", f"/runs/{run_id}/heatmap?sample_stride={sample_stride}&max_depth={max_depth}"
+        )
+        return result if isinstance(result, list) else []
+
     def stream(self, run_id: str, delay_ms: int = 50) -> Iterator[JSON]:
         """Yield the run's WebSocket messages: every snapshot, then the final ``done`` message."""
         url = self.base_url.replace("http", "ws", 1) + f"/runs/{run_id}/stream?delay_ms={delay_ms}"

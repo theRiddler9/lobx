@@ -24,6 +24,7 @@ from lobx.service.schemas import (
     StrategyRow,
 )
 from lobx.sim.agents.recorder import SnapshotRecorder
+from lobx.types import Fill
 
 
 @dataclass(slots=True)
@@ -37,6 +38,8 @@ class RunJob:
     error: str | None = None
     # Set by the worker when the market is built; its ``snapshots`` list grows while the run goes.
     recorder: SnapshotRecorder | None = None
+    market_fills: list[Fill] = field(default_factory=list)
+    strategy_fills: list[Fill] = field(default_factory=list)
 
     def info(self) -> RunInfo:
         """Return the API view of this job."""
