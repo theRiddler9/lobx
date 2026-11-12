@@ -19,6 +19,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from lobx.data.lobster import iter_lobster_messages
 from lobx.engine.book_py import PythonOrderBook
 from lobx.engine.event_log import EventLog
 from lobx.engine.native import NativeOrderBook
@@ -42,7 +43,10 @@ from lobx.ml.train import evaluation_table, score_models, train_models
 from lobx.sim.clock import NS_PER_S
 from lobx.sim.market import Market
 from lobx.sim.population import MarketConfig
-from lobx.types import FillEvent
+from lobx.sim.replay_market import ReplayMarket
+from lobx.strategies.base import ParentOrder
+from lobx.strategies.twap import TwapStrategy
+from lobx.types import FillEvent, Side
 
 
 def _file_digest(path: Path) -> str:
@@ -130,6 +134,48 @@ def _cmd_replay(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_replay_lobster(args: argparse.Namespace) -> int:
+    book: OrderBook = NativeOrderBook() if args.engine == "native" else PythonOrderBook()
+    strategy = None
+    parent = None
+    wake_interval = 1_000_000_000
+    if args.strategy == "twap":
+        strategy = TwapStrategy(num_slices=args.slices)
+        msgs = list(iter_lobster_messages(args.message))
+        start_ns = msgs[0].ts_ns if msgs else 0
+        end_ns = msgs[-1].ts_ns if msgs else start_ns + 3600 * NS_PER_S
+        if end_ns <= start_ns:
+            end_ns = start_ns + 1_000_000_000
+        parent = ParentOrder(
+            agent_id=1,
+            side=Side.SELL if args.side == "sell" else Side.BUY,
+            qty=args.shares,
+            start_ns=start_ns,
+            end_ns=end_ns,
+        )
+        wake_interval = max(1, (end_ns - start_ns) // max(1, args.slices))
+
+    market = ReplayMarket(
+        message_path=args.message,
+        book_path=args.book,
+        book=book,
+        strategy=strategy,
+        parent=parent,
+        wake_interval_ns=wake_interval,
+    )
+    result = market.run()
+    print(f"replayed {result.events_replayed} historical events from {args.message}")
+    print(f"total market volume: {result.total_market_volume:,} shares")
+    if parent is not None:
+        print(f"executed: {result.executed}/{parent.qty} shares")
+        print(f"arrival mid: {result.arrival_mid2 / 2:.2f} ticks")
+        if result.shortfall_bps is not None:
+            print(f"shortfall: {result.shortfall_bps:.2f} bps")
+        else:
+            print("shortfall: incomplete execution")
+    return 0
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     try:
         import uvicorn  # optional: only the service needs it
@@ -174,6 +220,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     replay_parser.add_argument("log", type=Path, help="an .eventlog file written by 'run'")
     replay_parser.set_defaults(handler=_cmd_replay)
+
+    lobster_parser = commands.add_parser(
+        "replay-lobster", help="replay historical LOBSTER L2/L3 order stream and evaluate execution"
+    )
+    lobster_parser.add_argument("--message", type=Path, required=True, help="LOBSTER message CSV")
+    lobster_parser.add_argument("--book", type=Path, default=None, help="LOBSTER orderbook CSV")
+    lobster_parser.add_argument(
+        "--strategy", choices=("twap", "none"), default="twap", help="strategy (default: twap)"
+    )
+    lobster_parser.add_argument("--shares", type=int, default=300, help="parent qty (default: 300)")
+    lobster_parser.add_argument(
+        "--side", choices=("sell", "buy"), default="sell", help="parent side (default: sell)"
+    )
+    lobster_parser.add_argument("--slices", type=int, default=5, help="TWAP slices (default: 5)")
+    lobster_parser.add_argument(
+        "--engine",
+        choices=("python", "native"),
+        default="native",
+        help="engine implementation (default: native)",
+    )
+    lobster_parser.set_defaults(handler=_cmd_replay_lobster)
 
     train_parser = commands.add_parser(
         "train", help="train the order-flow models and score them on held-out seeds"
