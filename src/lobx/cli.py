@@ -81,7 +81,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
 def _cmd_eval(args: argparse.Namespace) -> int:
     names = [name.strip() for name in args.strategies.split(",") if name.strip()]
     model = obtain_model(args.model, default_engine()) if "adaptive" in names else None
-    results = evaluate(names, args.seeds, model=model, threshold=args.threshold)
+    results = evaluate(
+        names,
+        args.seeds,
+        model=model,
+        threshold=args.threshold,
+        risk_aversion=args.risk_aversion,
+    )
     first = TEST_SEEDS.start
     print(f"test seeds {first}..{first + args.seeds - 1} (simulated market; lower is better)")
     print(results_table(results))
@@ -400,6 +406,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     evaluate_parser.add_argument(
         "--threshold", type=float, default=DEFAULT_THRESHOLD, help="adaptive threshold"
+    )
+    evaluate_parser.add_argument(
+        "--risk-aversion",
+        type=float,
+        default=1e-4,
+        help="Almgren-Chriss risk aversion (default: 1e-4)",
     )
     evaluate_parser.add_argument(
         "--plot", type=Path, default=None, help="also write a PNG of the results here"

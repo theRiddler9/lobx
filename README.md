@@ -16,6 +16,7 @@ LOBX simulates electronic financial exchanges with industrial matching engines, 
 * **Realistic FIFO Queue-Position Tracker**: Eliminates the "fill-on-touch" backtesting fallacy by tracking resting order queue position and volume depletion ahead (`qty_ahead`) under Conservative, Proportional, and Optimistic cancel models.
 * **TradingView Interactive Visualizer & Microstructure Analytics**: Embedded Lightweight Charts with candlestick aggregation (Time & Volume bars), Order Book Depth Heatmap, Cumulative Volume Delta (CVD), Stoikov Micro-price, and Volume-Synchronized Probability of Toxicity (VPIN).
 * **Cross-Asset Statistical Arbitrage & Pairs Execution**: Microstructure lead-lag latency arbitrageur (`LeadLagArbitrageAgent`) exploiting order book imbalance transmission, and dynamic two-legged pairs parent execution (`PairsExecutionStrategy`) with real-time leg-risk throttling.
+* **Almgren-Chriss Optimal Execution Trajectory**: Classical Almgren & Chriss (2000) execution engine generating mathematically optimal slice trajectories on the efficient frontier (Expected Shortfall vs. Variance of Shortfall) under configurable risk aversion $\lambda$.
 * **Reinforcement Learning Gymnasium Environment**: Standard Gym execution environment (`ExecutionEnv`) with continuous state observations, shortfall-based reward shaping, and analytical PPO actor-critic network training with Generalized Advantage Estimation (GAE).
 * **Differential Testing Parity**: Python reference and C++ native engines are differential-tested against 1,000,000 randomized orders to guarantee 100% invariant parity (`tests/test_native_differential.py`).
 * **Honest ML Accounting**: While LightGBM predicts 1-second price movement with 0.599 accuracy (vs. 0.451 naive baseline), crossing the spread aggressively on 1-tick forecasts incurs costs exceeding forecast value, converging optimal policy to passive spread capture.
@@ -61,34 +62,34 @@ Paired Differences by Seed ($a - b$ in bps; negative means $a$ is cheaper; compl
 
 ```mermaid
 flowchart TD
-    subgraph Market Ingress & Data Feeds
+    subgraph Ingress["Market Ingress & Data Feeds"]
         A["Background Agents<br/>(Noise, Market Maker, Momentum)"]
         LOBSTER["LOBSTER Historical L2/L3 Feeds<br/>(Zero-Drift NS Parser)"]
         CROSS_SIM["CrossMarket Environment<br/>(Multi-Asset Lead-Lag Coupling)"]
         GW["Asynchronous Exchange Gateway<br/>(Atomic Sequencer & SPSC Egress)"]
     end
 
-    subgraph Core High-Performance Matching Engine
+    subgraph Core["Core High-Performance Matching Engine"]
         SPSC["Lock-Free SPSC Ring Buffer<br/>(Cacheline 64B Padded)"]
         SLAB["Zero-Allocation Slab Book<br/>(Preallocated Memory Pool)"]
         ENG["OrderBook Engine (C++17 / pybind11)<br/>Price-Time Priority | IOC | FOK | PostOnly"]
         MULTI_ENG["MultiBook Engine (C++17)<br/>Concurrent Multi-Symbol Router"]
     end
 
-    subgraph Simulation, Queue & Execution Dynamics
+    subgraph Sim["Simulation, Queue & Execution Dynamics"]
         QUEUE["FIFO Queue-Position Tracker<br/>(Volume Ahead Depletion | Cancellation Model)"]
         STRAT["Execution Strategies<br/>TWAP | VWAP | Passive | Adaptive ML"]
         PAIRS["Pairs Execution Strategy<br/>(Dynamic Leg-Risk Throttling)"]
         RL["Gymnasium RL PPO Agent<br/>(Actor-Critic | GAE Rollouts)"]
     end
 
-    subgraph Analytics & Visualizer
+    subgraph Analytics["Analytics & Visualizer"]
         FEAT["Vectorized C++ Feature Engine<br/>(Imbalance, Returns, Flow)"]
         MICRO["Microstructure Analytics<br/>CVD | VPIN | Stoikov Micro-price"]
         HEAT["Order Book Depth Heatmap & Bars"]
     end
 
-    subgraph Evaluation & Serving Layer
+    subgraph Serving["Evaluation & Serving Layer"]
         EVAL["Multi-Seed Evaluator<br/>(Shortfall bps, Statistics & CIs)"]
         API["FastAPI REST & WebSocket Stream<br/>(Jobs, Runs, Comparisons, Bars)"]
         DASH["Streamlit TradingView Dashboard<br/>(Lightweight Charts | Live Depth View)"]
@@ -131,9 +132,9 @@ flowchart TD
 | **Queue-Position Modeling** | `src/lobx/sim/queue_position.py` | FIFO queue-position tracker with volume ahead depletion and cancellation models. |
 | **Historical Replay Market** | `src/lobx/sim/replay_market.py` | Tick-by-tick historical book replay and strategy execution against real order streams. |
 | **Cross-Asset Simulator** | `src/lobx/sim/cross_market.py`, `agents/lead_lag.py` | Multi-asset discrete-event simulation with lead-lag latency arbitrage and correlated market makers. |
-| **Execution Strategies** | `src/lobx/strategies/` | TWAP, VWAP, ML-Adaptive, and Pairs statistical arbitrage with dynamic leg-risk control. |
+| **Execution Strategies** | `src/lobx/strategies/` | TWAP, VWAP, ML-Adaptive, Almgren-Chriss (optimal trajectory), and Pairs statistical arbitrage. |
 | **Gymnasium RL Env & PPO** | `src/lobx/rl/environment.py`, `ppo.py` | Custom Gymnasium environment with analytical PPO actor-critic network and GAE advantage learning. |
-| **Order Flow Analytics** | `src/lobx/analytics/` | Candlestick bars (Time & Volume), Depth Heatmap, CVD, Stoikov Micro-price, and VPIN. |
+| **Market Impact & Analytics** | `src/lobx/analytics/` | Candlestick bars, Depth Heatmap, CVD, Stoikov Micro-price, VPIN, and Square-Root Impact modeling. |
 | **Evaluation Harness** | `src/lobx/eval/` | Statistical multi-seed shortfall evaluator with lookahead leakage validation and paired comparison tests. |
 | **Service & Dashboard** | `src/lobx/service/`, `dashboard/app.py` | Production FastAPI service with WebSocket live broadcast and interactive TradingView dashboard. |
 
@@ -218,7 +219,7 @@ python -m lobx.cli train --out models
 python -m lobx.cli tune --model models/lightgbm.json --seeds 40
 
 # Evaluate execution strategies over 200 held-out test seeds
-python -m lobx.cli eval --strategies twap,vwap,passive,adaptive --seeds 200
+python -m lobx.cli eval --strategies twap,vwap,passive,adaptive,almgren-chriss --seeds 200 --risk-aversion 1e-4
 ```
 
 ### 5. Web Service & Live Interactive Dashboard
