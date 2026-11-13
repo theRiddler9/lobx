@@ -19,6 +19,7 @@ from lobx.ml.model import Classifier
 from lobx.ml.store import load_model, save_model
 from lobx.ml.train import train_models
 from lobx.strategies.adaptive import AdaptiveStrategy
+from lobx.strategies.almgren_chriss import AlmgrenChrissStrategy
 from lobx.strategies.twap import TwapStrategy
 from lobx.strategies.volume_profile import estimate_volume_profile
 from lobx.strategies.vwap import VwapStrategy
@@ -26,7 +27,7 @@ from lobx.strategies.vwap import VwapStrategy
 logger = logging.getLogger(__name__)
 
 # "passive" is the adaptive strategy with the model switched off (an ablation, not a competitor).
-STRATEGY_NAMES = ("twap", "vwap", "passive", "adaptive")
+STRATEGY_NAMES = ("twap", "vwap", "passive", "adaptive", "almgren-chriss")
 # Strategies that wake every 200 ms instead of once per slice.
 WATCHING = frozenset({"passive", "adaptive"})
 DEFAULT_MODEL_PATH = Path("models/lightgbm.json")
@@ -52,6 +53,7 @@ def build_factory(
     engine: EngineFactory | None,
     model: Classifier | None = None,
     threshold: float = DEFAULT_THRESHOLD,
+    risk_aversion: float = 1e-4,
 ) -> StrategyFactory:
     """Return a factory that makes a fresh strategy called ``name``.
 
@@ -60,6 +62,8 @@ def build_factory(
     """
     if name == "twap":
         return lambda: TwapStrategy(config.num_slices)
+    if name in ("almgren-chriss", "almgren_chriss"):
+        return lambda: AlmgrenChrissStrategy(config.num_slices, risk_aversion=risk_aversion)
     if name == "vwap":
         history = [background_trades(seed, config, engine) for seed in TRAIN_SEEDS]
         profile = estimate_volume_profile(
@@ -82,6 +86,7 @@ def evaluate(
     engine: EngineFactory | None = None,
     model: Classifier | None = None,
     threshold: float = DEFAULT_THRESHOLD,
+    risk_aversion: float = 1e-4,
 ) -> dict[str, list[SeedResult]]:
     """Run every strategy in ``names`` on the same ``num_seeds`` test seeds."""
     if num_seeds < 2:
@@ -91,6 +96,6 @@ def evaluate(
     results: dict[str, list[SeedResult]] = {}
     for name in names:
         logger.info("running %s on %d seeds", name, num_seeds)
-        factory = build_factory(name, config, engine, model, threshold)
+        factory = build_factory(name, config, engine, model, threshold, risk_aversion=risk_aversion)
         results[name] = run_many(factory, seeds, config, engine, watching=name in WATCHING)
     return results
