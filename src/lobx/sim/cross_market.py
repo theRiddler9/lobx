@@ -72,7 +72,10 @@ class CrossMarketView(Protocol):
 class CrossMarketAgent(Protocol):
     """An agent interacting with multiple symbols in the CrossMarket."""
 
-    agent_id: int
+    @property
+    def agent_id(self) -> int:
+        """Return the agent's unique numeric identifier."""
+        ...
 
     def wake(self, ts: int, view: CrossMarketView) -> list[Action]:
         """Produce actions across one or multiple symbols upon waking."""
