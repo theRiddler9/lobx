@@ -7,6 +7,7 @@ plain ints and tuples the extension speaks, so the rest of LOBX cannot tell the 
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from types import ModuleType
 from typing import TYPE_CHECKING
 
@@ -14,7 +15,7 @@ from lobx.errors import NativeEngineUnavailableError
 from lobx.types import BookSnapshot, Fill, Order, OrderType, Side
 
 if TYPE_CHECKING:
-    from lobx._native import NativeBook
+    from lobx._native import NativeBook, NativeMultiBook
 
 _native: ModuleType | None
 _IMPORT_ERROR: ImportError | None
@@ -133,3 +134,85 @@ class NativeOrderBook:
     def best_ask(self) -> int | None:
         """Return the lowest resting ask price, or ``None`` if there are no asks."""
         return self._book.best_ask()
+
+
+class NativeMultiOrderBook:
+    """The C++ multi-book router wrapped for python interoperability."""
+
+    def __init__(self, symbols: Sequence[str] = ()) -> None:
+        """Initialize NativeMultiOrderBook with optional symbols."""
+        if _native is None:
+            raise NativeEngineUnavailableError(
+                "the C++ engine is not built; run `pip install -e .` (needs a C++17 compiler and "
+                f"CMake). Import error: {_IMPORT_ERROR}"
+            )
+        self._mb: NativeMultiBook = _native.NativeMultiBook(list(symbols))
+
+    _TYPE_MAP = {
+        OrderType.LIMIT: 0,
+        OrderType.MARKET: 1,
+        OrderType.IOC: 2,
+        OrderType.FOK: 3,
+        OrderType.POST_ONLY: 4,
+    }
+
+    @property
+    def symbols(self) -> tuple[str, ...]:
+        """Return all registered symbols."""
+        return tuple(self._mb.symbols())
+
+    def add_symbol(self, symbol: str) -> None:
+        """Register a new symbol book."""
+        self._mb.add_symbol(symbol)
+
+    def has_symbol(self, symbol: str) -> bool:
+        """Check if symbol is registered."""
+        return self._mb.has_symbol(symbol)
+
+    def submit(self, symbol: str, order: Order) -> list[Fill]:
+        """Route order submission to specific symbol in C++ engine."""
+        raw = self._mb.submit(
+            symbol,
+            order.order_id,
+            order.agent_id,
+            0 if order.side is Side.BUY else 1,
+            self._TYPE_MAP.get(order.type, 0),
+            order.price,
+            order.qty,
+            order.ts,
+        )
+        return [
+            Fill(maker, taker, Side.BUY if side == 0 else Side.SELL, price, qty, ts)
+            for maker, taker, side, price, qty, ts in raw
+        ]
+
+    def cancel(self, symbol: str, order_id: int, ts: int) -> bool:
+        """Route cancel request to specific symbol in C++ engine."""
+        return self._mb.cancel(symbol, order_id, ts)
+
+    def snapshot(self, symbol: str, depth: int = 5) -> BookSnapshot:
+        """Fetch depth-K snapshot for symbol."""
+        if depth <= 0:
+            raise ValueError(f"depth must be greater than 0, got {depth}")
+        ts, bids, asks = self._mb.snapshot(symbol, depth)
+        return BookSnapshot(ts=ts, bids=tuple(bids), asks=tuple(asks))
+
+    def best_bid(self, symbol: str) -> int | None:
+        """Fetch best bid price for symbol."""
+        return self._mb.best_bid(symbol)
+
+    def best_ask(self, symbol: str) -> int | None:
+        """Fetch best ask price for symbol."""
+        return self._mb.best_ask(symbol)
+
+    def mid_price(self, symbol: str) -> float | None:
+        """Fetch current mid price for symbol."""
+        return self._mb.mid_price(symbol)
+
+    def imbalance(self, symbol: str, depth: int = 1) -> float:
+        """Compute depth-K imbalance for symbol."""
+        return self._mb.imbalance(symbol, depth)
+
+    def all_snapshots(self, depth: int = 5) -> dict[str, BookSnapshot]:
+        """Fetch depth-K snapshots across all symbols."""
+        return {sym: self.snapshot(sym, depth) for sym in self.symbols}
