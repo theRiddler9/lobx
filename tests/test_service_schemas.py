@@ -37,7 +37,7 @@ def test_comparison_limits() -> None:
         {"strategies": []},
         {"strategies": ["twap"], "seeds": 1},
         {"strategies": ["twap"], "seeds": 201},
-        {"strategies": ["twap", "vwap", "passive", "adaptive", "twap"]},
+        {"strategies": ["twap", "vwap", "passive", "adaptive", "almgren-chriss", "twap"]},
     ]
     for bad in bad_requests:
         with pytest.raises(ValidationError):

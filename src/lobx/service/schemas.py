@@ -15,7 +15,7 @@ from lobx.eval.runner import STRATEGY_NAMES
 from lobx.eval.seeds import TEST_SEEDS
 
 # The same four names the CLI accepts; the literal type makes FastAPI reject anything else.
-StrategyName = Literal["twap", "vwap", "passive", "adaptive"]
+StrategyName = Literal["twap", "vwap", "passive", "adaptive", "almgren-chriss"]
 JobStatus = Literal["queued", "running", "done", "failed"]
 
 # Guard: the names above must stay in step with the evaluation runner.
@@ -65,7 +65,7 @@ class RunInfo(BaseModel):
 class ComparisonRequest(BaseModel):
     """Compare strategies on the same held-out test seeds."""
 
-    strategies: list[StrategyName] = Field(min_length=1, max_length=4)
+    strategies: list[StrategyName] = Field(min_length=1, max_length=5)
     seeds: int = Field(default=10, ge=2, le=MAX_COMPARISON_SEEDS)
 
 
