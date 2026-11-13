@@ -88,6 +88,30 @@ class BookSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class SymbolOrder:
+    """An order tagged with a specific ticker/asset symbol."""
+
+    symbol: str
+    order: Order
+
+
+@dataclass(frozen=True, slots=True)
+class SymbolFill:
+    """A trade execution fill tagged with a specific ticker/asset symbol."""
+
+    symbol: str
+    fill: Fill
+
+
+@dataclass(frozen=True, slots=True)
+class MultiBookSnapshot:
+    """Snapshots of multiple symbol order books captured at timestamp ts."""
+
+    ts: int
+    snapshots: dict[str, BookSnapshot]
+
+
+@dataclass(frozen=True, slots=True)
 class SubmitEvent:
     """An order the engine accepted. Orders the engine rejected are never logged."""
 

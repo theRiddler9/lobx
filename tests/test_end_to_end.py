@@ -249,3 +249,49 @@ def test_e2e_service_lifecycle() -> None:
             time.sleep(0.05)
         assert c_res["status"] == "done"
         assert len(c_res["rows"]) == 2
+
+
+def test_e2e_multi_asset_cross_arbitrage(capsys: pytest.CaptureFixture[str]) -> None:
+    # 1. Pairs execution end-to-end
+    pairs_cmd = [
+        "multi-sim",
+        "--symbols",
+        "SPY,QQQ",
+        "--duration",
+        "2",
+        "--strategy",
+        "pairs",
+        "--shares",
+        "100",
+        "--slices",
+        "2",
+        "--engine",
+        "native",
+    ]
+    assert main(pairs_cmd) == 0
+    pairs_out = capsys.readouterr().out
+    assert "simulated multi-asset market across ('SPY', 'QQQ')" in pairs_out
+    assert "[SPY] trades:" in pairs_out
+    assert "[QQQ] trades:" in pairs_out
+    assert "executed SPY: 100/100 shares" in pairs_out
+    assert "executed QQQ: 100/100 shares" in pairs_out
+    assert "combined pairs shortfall:" in pairs_out
+
+    # 2. Lead-lag cross arbitrage end-to-end
+    lead_cmd = [
+        "multi-sim",
+        "--symbols",
+        "LEAD,LAG",
+        "--duration",
+        "2",
+        "--strategy",
+        "lead-lag",
+        "--shares",
+        "20",
+        "--engine",
+        "native",
+    ]
+    assert main(lead_cmd) == 0
+    lead_out = capsys.readouterr().out
+    assert "simulated multi-asset market across ('LEAD', 'LAG')" in lead_out
+    assert "arbitrageur trades executed:" in lead_out

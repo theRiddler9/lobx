@@ -35,6 +35,7 @@ criteria hold, its `docs/learn/phase-N.md` exists, and the tag is created.
 - [x] Phase 8: hardening and release (tag `phase-8-release`)
 - [x] Phase Visualizer: TradingView charts, CVD, and microstructure analytics
 - [x] Phase Historical Replay: LOBSTER ingestion, queue-position modeling, and replay execution
+- [x] Phase Multi-Asset: Multi-Book matching engine, lead-lag arbitrage, and pairs execution
 - [ ] Optional Phase 9: RL (stretch, only after Phase 8)
 
 ## Cut line (if time runs short)

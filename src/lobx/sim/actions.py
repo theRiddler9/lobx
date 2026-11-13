@@ -22,16 +22,17 @@ class Submit:
     order_type: OrderType
     price: int | None
     qty: int
+    symbol: str | None = None
 
     @classmethod
-    def limit(cls, side: Side, price: int, qty: int) -> Submit:
+    def limit(cls, side: Side, price: int, qty: int, symbol: str | None = None) -> Submit:
         """Build a limit order request: it may rest in the book at ``price``."""
-        return cls(side, OrderType.LIMIT, price, qty)
+        return cls(side, OrderType.LIMIT, price, qty, symbol)
 
     @classmethod
-    def market(cls, side: Side, qty: int) -> Submit:
+    def market(cls, side: Side, qty: int, symbol: str | None = None) -> Submit:
         """Build a market order request: it trades now at whatever price is available."""
-        return cls(side, OrderType.MARKET, None, qty)
+        return cls(side, OrderType.MARKET, None, qty, symbol)
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +40,7 @@ class Cancel:
     """Ask the market to cancel one of the agent's own resting orders."""
 
     order_id: int
+    symbol: str | None = None
 
 
 Action: TypeAlias = Submit | Cancel

@@ -11,6 +11,7 @@
 #include "lobx/concurrent_order_book.hpp"
 #include "lobx/features.hpp"
 #include "lobx/gateway.hpp"
+#include "lobx/multi_book.hpp"
 #include "lobx/order_book.hpp"
 #include "lobx/sim_engine.hpp"
 
@@ -68,6 +69,27 @@ std::vector<FillTuple> submit_many_helper(BookType& book,
                                  static_cast<lobx::OrderType>(type), price, qty, ts});
   }
   const std::vector<lobx::Fill> fills = book.submit_many(orders);
+  std::vector<FillTuple> out;
+  out.reserve(fills.size());
+  for (const lobx::Fill& f : fills) {
+    out.emplace_back(f.maker_id, f.taker_id, f.taker_side == lobx::Side::Buy ? 0 : 1, f.price,
+                     f.qty, f.ts);
+  }
+  return out;
+}
+
+std::vector<FillTuple> submit_multibook_helper(lobx::MultiBookEngine& mb, const std::string& symbol,
+                                               std::int64_t id, std::int64_t agent, int side,
+                                               int type, std::optional<std::int64_t> price,
+                                               std::int64_t qty, std::int64_t ts) {
+  const lobx::Order order{id,
+                          agent,
+                          side == 0 ? lobx::Side::Buy : lobx::Side::Sell,
+                          static_cast<lobx::OrderType>(type),
+                          price,
+                          qty,
+                          ts};
+  const std::vector<lobx::Fill> fills = mb.submit(symbol, order);
   std::vector<FillTuple> out;
   out.reserve(fills.size());
   for (const lobx::Fill& f : fills) {
@@ -207,4 +229,26 @@ PYBIND11_MODULE(_native, m) {
       .def("trades_count", [](const lobx::CppMarket& self) { return self.trades().size(); })
       .def("best_bid", [](const lobx::CppMarket& self) { return self.book().best_bid(); })
       .def("best_ask", [](const lobx::CppMarket& self) { return self.book().best_ask(); });
+
+  py::class_<lobx::MultiBookEngine>(m, "NativeMultiBook")
+      .def(py::init<std::vector<std::string>>(), py::arg("symbols") = std::vector<std::string>{})
+      .def("add_symbol", &lobx::MultiBookEngine::add_symbol, py::arg("symbol"))
+      .def("has_symbol", &lobx::MultiBookEngine::has_symbol, py::arg("symbol"))
+      .def("symbols", &lobx::MultiBookEngine::symbols)
+      .def("submit", &submit_multibook_helper, py::arg("symbol"), py::arg("id"), py::arg("agent"),
+           py::arg("side"), py::arg("type"), py::arg("price"), py::arg("qty"), py::arg("ts"))
+      .def("cancel", &lobx::MultiBookEngine::cancel, py::arg("symbol"), py::arg("order_id"),
+           py::arg("ts"))
+      .def(
+          "snapshot",
+          [](const lobx::MultiBookEngine& mb, const std::string& symbol, std::size_t depth) {
+            const lobx::Snapshot s = mb.snapshot(symbol, depth);
+            return std::make_tuple(s.ts, s.bids, s.asks);
+          },
+          py::arg("symbol"), py::arg("depth"))
+      .def("best_bid", &lobx::MultiBookEngine::best_bid, py::arg("symbol"))
+      .def("best_ask", &lobx::MultiBookEngine::best_ask, py::arg("symbol"))
+      .def("mid_price", &lobx::MultiBookEngine::mid_price, py::arg("symbol"))
+      .def("imbalance", &lobx::MultiBookEngine::imbalance, py::arg("symbol"), py::arg("depth") = 1)
+      .def("resting_orders", &lobx::MultiBookEngine::resting_orders, py::arg("symbol"));
 }

@@ -176,6 +176,90 @@ def _cmd_replay_lobster(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_multi_sim(args: argparse.Namespace) -> int:
+    from lobx.sim.agents.lead_lag import CorrelatedMarketMaker, LeadLagArbitrageAgent
+    from lobx.sim.cross_market import CrossMarket, CrossMarketConfig
+    from lobx.strategies.pairs import PairsExecutionStrategy, PairsParentOrder
+
+    symbols = tuple(args.symbols.split(","))
+    cfg = CrossMarketConfig(
+        symbols=symbols,
+        duration_ns=args.duration * NS_PER_S,
+        seed=args.seed,
+    )
+    book_factory = NativeOrderBook if args.engine == "native" else PythonOrderBook
+    market = CrossMarket(cfg, book_factory=book_factory)
+    market.seed_initial_liquidity(depth_per_side=args.depth, qty_per_level=args.qty)
+
+    strat = None
+    parent = None
+    arb = None
+    sym_a = symbols[0]
+    sym_b = symbols[1] if len(symbols) > 1 else symbols[0]
+
+    if args.strategy == "lead-lag":
+        arb = LeadLagArbitrageAgent(
+            agent_id=1,
+            lead_symbol=sym_a,
+            lag_symbol=sym_b,
+            imbalance_threshold=args.threshold,
+            trade_qty=args.shares,
+        )
+        cmm = CorrelatedMarketMaker(
+            agent_id=2,
+            symbol=sym_b,
+            anchor_symbol=sym_a,
+        )
+        market.add_agent(arb, wake_interval_ns=50_000_000)
+        market.add_agent(cmm, wake_interval_ns=25_000_000)
+    elif args.strategy == "pairs":
+        parent = PairsParentOrder(
+            agent_id=1,
+            symbol_a=sym_a,
+            side_a=Side.BUY,
+            qty_a=args.shares,
+            symbol_b=sym_b,
+            side_b=Side.SELL,
+            qty_b=args.shares,
+            start_ns=0,
+            end_ns=args.duration * NS_PER_S,
+            max_leg_imbalance=max(1, args.shares // 5),
+        )
+        strat = PairsExecutionStrategy(parent, num_slices=args.slices)
+        wake_ns = max(1, (args.duration * NS_PER_S) // max(1, args.slices))
+        market.add_agent(strat, wake_interval_ns=wake_ns)
+
+    result = market.run()
+    print(f"simulated multi-asset market across {symbols} for {args.duration}s")
+    for sym in symbols:
+        trade_count = len(result.trades_per_symbol.get(sym, []))
+        mid = result.final_mid_prices.get(sym)
+        mid_str = f"{mid:.2f}" if mid is not None else "None"
+        print(f"  [{sym}] trades: {trade_count:,} | final mid: {mid_str} ticks")
+
+    if args.strategy == "pairs" and strat is not None and parent is not None:
+        metrics = strat.compute_metrics(market)
+        print(
+            f"executed {sym_a}: {metrics.executed_a}/{parent.qty_a} shares | "
+            f"shortfall: {metrics.shortfall_a_bps:.2f} bps"
+        )
+        print(
+            f"executed {sym_b}: {metrics.executed_b}/{parent.qty_b} shares | "
+            f"shortfall: {metrics.shortfall_b_bps:.2f} bps"
+        )
+        print(
+            f"combined pairs shortfall: {metrics.combined_shortfall_bps:.2f} bps | "
+            f"max unhedged: {metrics.max_unhedged_qty}"
+        )
+    elif args.strategy == "lead-lag" and arb is not None:
+        pos_lag = result.agent_positions.get(1, {}).get(sym_b, 0)
+        print(
+            f"arbitrageur trades executed: {arb.trades_executed} | "
+            f"final {sym_b} position: {pos_lag}"
+        )
+    return 0
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     try:
         import uvicorn  # optional: only the service needs it
@@ -241,6 +325,45 @@ def build_parser() -> argparse.ArgumentParser:
         help="engine implementation (default: native)",
     )
     lobster_parser.set_defaults(handler=_cmd_replay_lobster)
+
+    multi_sim_parser = commands.add_parser(
+        "multi-sim", help="simulate multiple correlated asset order books and cross-arbitrage"
+    )
+    multi_sim_parser.add_argument(
+        "--symbols", default="LEAD,LAG", help="comma-separated symbols (default: LEAD,LAG)"
+    )
+    multi_sim_parser.add_argument(
+        "--duration", type=int, default=10, help="duration in seconds (default: 10)"
+    )
+    multi_sim_parser.add_argument("--seed", type=int, default=42, help="random seed (default: 42)")
+    multi_sim_parser.add_argument(
+        "--strategy",
+        choices=("pairs", "lead-lag", "none"),
+        default="pairs",
+        help="strategy (default: pairs)",
+    )
+    multi_sim_parser.add_argument(
+        "--shares", type=int, default=100, help="order shares (default: 100)"
+    )
+    multi_sim_parser.add_argument(
+        "--slices", type=int, default=5, help="execution slices (default: 5)"
+    )
+    multi_sim_parser.add_argument(
+        "--threshold", type=float, default=0.3, help="imbalance threshold (default: 0.3)"
+    )
+    multi_sim_parser.add_argument(
+        "--depth", type=int, default=5, help="initial depth per side (default: 5)"
+    )
+    multi_sim_parser.add_argument(
+        "--qty", type=int, default=500, help="initial qty per level (default: 500)"
+    )
+    multi_sim_parser.add_argument(
+        "--engine",
+        choices=("python", "native"),
+        default="native",
+        help="engine (default: native)",
+    )
+    multi_sim_parser.set_defaults(handler=_cmd_multi_sim)
 
     train_parser = commands.add_parser(
         "train", help="train the order-flow models and score them on held-out seeds"
