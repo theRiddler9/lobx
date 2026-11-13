@@ -295,3 +295,20 @@ def test_e2e_multi_asset_cross_arbitrage(capsys: pytest.CaptureFixture[str]) -> 
     lead_out = capsys.readouterr().out
     assert "simulated multi-asset market across ('LEAD', 'LAG')" in lead_out
     assert "arbitrageur trades executed:" in lead_out
+
+
+def test_e2e_almgren_chriss_execution(capsys: pytest.CaptureFixture[str]) -> None:
+    cmd = [
+        "eval",
+        "--strategies",
+        "almgren-chriss,twap",
+        "--seeds",
+        "2",
+        "--risk-aversion",
+        "0.0005",
+    ]
+    assert main(cmd) == 0
+    out = capsys.readouterr().out
+    assert "| almgren-chriss |" in out
+    assert "| twap |" in out
+    assert "paired by seed" in out
