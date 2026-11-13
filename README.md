@@ -61,34 +61,34 @@ Paired Differences by Seed ($a - b$ in bps; negative means $a$ is cheaper; compl
 
 ```mermaid
 flowchart TD
-    subgraph Market Ingress & Data Feeds
+    subgraph Ingress["Market Ingress & Data Feeds"]
         A["Background Agents<br/>(Noise, Market Maker, Momentum)"]
         LOBSTER["LOBSTER Historical L2/L3 Feeds<br/>(Zero-Drift NS Parser)"]
         CROSS_SIM["CrossMarket Environment<br/>(Multi-Asset Lead-Lag Coupling)"]
         GW["Asynchronous Exchange Gateway<br/>(Atomic Sequencer & SPSC Egress)"]
     end
 
-    subgraph Core High-Performance Matching Engine
+    subgraph Core["Core High-Performance Matching Engine"]
         SPSC["Lock-Free SPSC Ring Buffer<br/>(Cacheline 64B Padded)"]
         SLAB["Zero-Allocation Slab Book<br/>(Preallocated Memory Pool)"]
         ENG["OrderBook Engine (C++17 / pybind11)<br/>Price-Time Priority | IOC | FOK | PostOnly"]
         MULTI_ENG["MultiBook Engine (C++17)<br/>Concurrent Multi-Symbol Router"]
     end
 
-    subgraph Simulation, Queue & Execution Dynamics
+    subgraph Sim["Simulation, Queue & Execution Dynamics"]
         QUEUE["FIFO Queue-Position Tracker<br/>(Volume Ahead Depletion | Cancellation Model)"]
         STRAT["Execution Strategies<br/>TWAP | VWAP | Passive | Adaptive ML"]
         PAIRS["Pairs Execution Strategy<br/>(Dynamic Leg-Risk Throttling)"]
         RL["Gymnasium RL PPO Agent<br/>(Actor-Critic | GAE Rollouts)"]
     end
 
-    subgraph Analytics & Visualizer
+    subgraph Analytics["Analytics & Visualizer"]
         FEAT["Vectorized C++ Feature Engine<br/>(Imbalance, Returns, Flow)"]
         MICRO["Microstructure Analytics<br/>CVD | VPIN | Stoikov Micro-price"]
         HEAT["Order Book Depth Heatmap & Bars"]
     end
 
-    subgraph Evaluation & Serving Layer
+    subgraph Serving["Evaluation & Serving Layer"]
         EVAL["Multi-Seed Evaluator<br/>(Shortfall bps, Statistics & CIs)"]
         API["FastAPI REST & WebSocket Stream<br/>(Jobs, Runs, Comparisons, Bars)"]
         DASH["Streamlit TradingView Dashboard<br/>(Lightweight Charts | Live Depth View)"]
